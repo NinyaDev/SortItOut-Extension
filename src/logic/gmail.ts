@@ -38,7 +38,9 @@ export async function listMessageIds(token: string, query: string ="unsubscribe"
 export async function getMessageHeaders(token: string, messageId: string): Promise<{name: string; value: string}[]> {
     const url = new URL(`${GMAIL_BASE}/messages/${messageId}`);
     url.searchParams.set("format", "metadata");
-    url.searchParams.set("metadataHeaders", HEADERS_TO_FETCH.join(","));
+    for (const header of HEADERS_TO_FETCH) {
+        url.searchParams.append("metadataHeaders", header); //Before we were getting headers separated by commas, but Gmail API expects multiple metadataHeaders params for multiple headers
+    }
 
     const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },

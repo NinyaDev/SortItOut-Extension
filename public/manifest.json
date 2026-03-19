@@ -7,7 +7,7 @@
     "host_permissions": ["https://www.gmail.googleapis.com/*", "https://*/*"],
     "oauth2": {
         "client_id": "967825888472-kcsfrnmhpke786a2ks5v19fk7u9gj0f9.apps.googleusercontent.com",
-        "scopes": ["https://www.googleapis.com/auth/gmail.readonly"]
+        "scopes": ["https://www.googleapis.com/auth/gmail.modify"]
     },
     "background": {
         "service_worker": "background.js",
