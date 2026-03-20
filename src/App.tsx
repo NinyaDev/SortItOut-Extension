@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { SenderInfo } from "./logic/types";
 import { scanEmails } from "./logic/scanner";
+import { scanOutlookEmails } from "./logic/outlook-scanner";
 import { unsubscribeFromSender, UnsubscribeResult } from "./logic/unsubscribe";
-import { trashMessages, getSenderMessageIds } from "./logic/gmail";
+import { trashMessages as gmailTrash, getSenderMessageIds as gmailGetIds } from "./logic/gmail";
+import { trashMessages as outlookTrash, getSenderMessageIds as outlookGetIds } from "./logic/outlook";
+// Outlook auth is handled in the service worker (popup closes during auth flow)
 import SenderSkeleton from "./ui/SenderSkeleton";
 import { AnimatedList, AnimatedItem } from "./ui/AnimatedList";
 import SwipeableCard from "./ui/SwipeableCard";
@@ -13,9 +16,17 @@ type ViewMode = "card" | "list";
 type Provider = "gmail" | "outlook";
 
 function App() {
-    const [token, setToken] = useState<string | null>(null);
-    const [email, setEmail] = useState<string | null>(null);
+    // Auth state — separate per provider so both can be signed in simultaneously
+    const [gmailToken, setGmailToken] = useState<string | null>(null);
+    const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+    const [outlookToken, setOutlookToken] = useState<string | null>(null);
+    const [outlookEmail, setOutlookEmail] = useState<string | null>(null);
+
+    // Active provider determines which senders/token the UI uses
+    const [activeProvider, setActiveProvider] = useState<Provider | null>(null);
     const [loading, setLoading] = useState(true);
+
+    // Shared UI state — applies to whichever provider is active
     const [senders, setSenders] = useState<SenderInfo[]>([]);
     const [scanning, setScanning] = useState(false);
     const [results, setResults] = useState<UnsubscribeResult[]>([]);
@@ -25,9 +36,9 @@ function App() {
     const [showInfo, setShowInfo] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [processing, setProcessing] = useState(false);
-    const [provider, setProvider] = useState<Provider | null>(null);
     const [toast, setToast] = useState<string | null>(null);
 
+    // Helper: validate cached sender data before loading
     const isValidSenderCache = (data: unknown): data is SenderInfo[] => {
         if (!Array.isArray(data)) return false;
         if (data.length === 0) return false;
@@ -38,7 +49,20 @@ function App() {
             && first.unsubscribe !== undefined;
     };
 
-    const fetchUserEmail = (accessToken: string) => {
+    // Helper: get the right API functions based on active provider
+    const getTrashFn = () => activeProvider === "outlook" ? outlookTrash : gmailTrash;
+    const getIdsFn = () => activeProvider === "outlook" ? outlookGetIds : gmailGetIds;
+    const getActiveToken = () => activeProvider === "outlook" ? outlookToken : gmailToken;
+    const getCacheKey = () => activeProvider === "outlook" ? "outlookSenders" : "gmailSenders";
+
+    // Strip messageIds from cache to save storage space — IDs are fetched fresh when needed
+    const cacheSenders = (list: SenderInfo[]) => {
+        const forCache = list.map(({ messageIds, ...rest }) => ({ ...rest, messageIds: [] }));
+        chrome.storage.local.set({ [getCacheKey()]: forCache });
+    };
+
+    // Fetch Gmail user email using Gmail profile endpoint
+    const fetchGmailEmail = (accessToken: string) => {
         return fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
             headers: { Authorization: `Bearer ${accessToken}` },
         })
@@ -52,32 +76,54 @@ function App() {
         .then((data) => data?.emailAddress ?? null);
     };
 
+    // On mount: check for cached Gmail token and Outlook token
     useEffect(() => {
+        let resolved = false;
+
+        // Check Gmail
         chrome.identity.getAuthToken({ interactive: false }, (result) => {
             const accessToken = typeof result === "string" ? result : result?.token;
-            if (!accessToken) {
-                setLoading(false);
-                return;
-            }
-
-            fetchUserEmail(accessToken)
-                .then((userEmail) => {
+            if (accessToken) {
+                fetchGmailEmail(accessToken).then((userEmail) => {
                     if (userEmail) {
-                        setToken(accessToken);
-                        setEmail(userEmail);
-                        setProvider("gmail");
+                        setGmailToken(accessToken);
+                        setGmailEmail(userEmail);
+                        // If no provider is set yet, default to Gmail
+                        setActiveProvider((prev) => prev ?? "gmail");
                         chrome.storage.local.get("gmailSenders", (data) => {
                             if (isValidSenderCache(data.gmailSenders)) {
-                                setSenders(data.gmailSenders);
+                                // Only load Gmail cache if Gmail is the active provider
+                                setSenders((prev) => prev.length === 0 ? data.gmailSenders : prev);
                             }
                         });
                     }
-                })
-                .catch((err) => console.error("Failed to fetch user info:", err))
-                .finally(() => setLoading(false));
+                }).catch((err) => console.error("Gmail auth check failed:", err));
+            }
+            if (!resolved) { resolved = true; }
+        });
+
+        // Check Outlook — load from chrome.storage.local
+        chrome.storage.local.get(["outlookToken", "outlookRefreshToken", "outlookEmail"], (data) => {
+            if (data.outlookToken && data.outlookEmail) {
+                setOutlookToken(data.outlookToken);
+                setOutlookEmail(data.outlookEmail);
+                // If Gmail didn't set a provider, use Outlook
+                setActiveProvider((prev) => prev ?? "outlook");
+            }
+            // Both checks done
+            setLoading(false);
         });
     }, []);
 
+    // Auto-dismiss toast after 2 seconds
+    useEffect(() => {
+        if (toast) {
+            const timer = setTimeout(() => setToast(null), 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [toast]);
+
+    // Update badge count when results change
     useEffect(() => {
         const count = results.filter((r) => r.success).length;
         if (count > 0) {
@@ -88,6 +134,7 @@ function App() {
         }
     }, [results]);
 
+    // Sign in with Google — uses Chrome's built-in OAuth
     const handleSignInGoogle = () => {
         setLoading(true);
         chrome.identity.getAuthToken({ interactive: true }, (result) => {
@@ -99,12 +146,12 @@ function App() {
                 return;
             }
 
-            fetchUserEmail(accessToken)
+            fetchGmailEmail(accessToken)
                 .then((userEmail) => {
                     if (userEmail) {
-                        setToken(accessToken);
-                        setEmail(userEmail);
-                        setProvider("gmail");
+                        setGmailToken(accessToken);
+                        setGmailEmail(userEmail);
+                        setActiveProvider("gmail");
                         chrome.storage.local.get("gmailSenders", (data) => {
                             if (isValidSenderCache(data.gmailSenders)) {
                                 setSenders(data.gmailSenders);
@@ -117,48 +164,78 @@ function App() {
         });
     };
 
-    const handleLogout = () => {
-        if (token) {
-            chrome.identity.removeCachedAuthToken({ token });
+    // Sign in with Microsoft — sends message to service worker which handles the OAuth flow.
+    // The popup may close during auth, so the service worker saves tokens to storage.
+    // When the popup reopens, useEffect finds the tokens and loads Outlook state.
+    const handleSignInOutlook = () => {
+        chrome.runtime.sendMessage({ type: "OUTLOOK_SIGN_IN" });
+        setToast("Microsoft sign-in opened...");
+    };
+
+    // Switch between Gmail and Outlook (both stay signed in)
+    const switchProvider = (provider: Provider) => {
+        if (provider === activeProvider) return;
+
+        // Save current senders before switching
+        if (senders.length > 0) {
+            cacheSenders(senders);
         }
-        setToken(null);
-        setEmail(null);
-        setProvider(null);
+
+        setActiveProvider(provider);
         setSenders([]);
         setResults([]);
         setSelected(new Set());
         setError(null);
-    };
 
-    useEffect(() => {
-        if (toast) {
-            const timer = setTimeout(() => setToast(null), 2000);
-            return () => clearTimeout(timer);
-        }
-    }, [toast]);
-
-    const cacheSenders = (list: SenderInfo[]) => {
-        // Strip messageIds from cache to save storage space — IDs are fetched fresh when needed
-        const forCache = list.map(({ messageIds, ...rest }) => ({ ...rest, messageIds: [] }));
-        chrome.storage.local.set({ gmailSenders: forCache });
-    };
-
-    const removeSender = (senderEmail: string) => {
-        setSenders((prev) => {
-            const updated = prev.filter((s) => s.email !== senderEmail);
-            cacheSenders(updated);
-            return updated;
+        // Load cached senders for the new provider
+        const key = provider === "outlook" ? "outlookSenders" : "gmailSenders";
+        chrome.storage.local.get(key, (data) => {
+            if (isValidSenderCache(data[key])) {
+                setSenders(data[key]);
+            }
         });
     };
 
+    // Logout from the active provider only
+    const handleLogout = () => {
+        if (activeProvider === "gmail" && gmailToken) {
+            chrome.identity.removeCachedAuthToken({ token: gmailToken });
+            setGmailToken(null);
+            setGmailEmail(null);
+            chrome.storage.local.remove("gmailSenders");
+        } else if (activeProvider === "outlook") {
+            setOutlookToken(null);
+            setOutlookEmail(null);
+            chrome.storage.local.remove(["outlookToken", "outlookRefreshToken", "outlookEmail", "outlookSenders"]);
+        }
+
+        setSenders([]);
+        setResults([]);
+        setSelected(new Set());
+        setError(null);
+
+        // If the other provider is still signed in, switch to it
+        if (activeProvider === "gmail" && outlookToken) {
+            switchProvider("outlook");
+        } else if (activeProvider === "outlook" && gmailToken) {
+            switchProvider("gmail");
+        } else {
+            setActiveProvider(null);
+        }
+    };
+
+    // Scan emails using the active provider's scanner
     const handleScan = async () => {
+        const token = getActiveToken();
         if (!token) return;
         setScanning(true);
         setError(null);
         setResults([]);
         setSelected(new Set());
         try {
-            const scanResults = await scanEmails(token);
+            const scanResults = activeProvider === "outlook"
+                ? await scanOutlookEmails(token)
+                : await scanEmails(token);
             setSenders(scanResults);
             cacheSenders(scanResults);
         } catch (err) {
@@ -169,11 +246,20 @@ function App() {
         }
     };
 
-    const handleSwipeLeft = (sender: SenderInfo) => {
-        // Remove from list and advance immediately
-        removeSender(sender.email);
+    const removeSender = (senderEmail: string) => {
+        setSenders((prev) => {
+            const updated = prev.filter((s) => s.email !== senderEmail);
+            cacheSenders(updated);
+            return updated;
+        });
+    };
 
-        // Run actions in background (no await — card doesn't wait)
+    // Swipe left: unsubscribe and/or trash, then remove card immediately
+    const handleSwipeLeft = (sender: SenderInfo) => {
+        removeSender(sender.email);
+        const token = getActiveToken();
+
+        // Run unsubscribe in background
         if (swipeMode === "unsubscribe" || swipeMode === "unsubscribe-trash") {
             unsubscribeFromSender(sender).then((result) => {
                 setResults((prev) => [...prev, result]);
@@ -189,10 +275,12 @@ function App() {
             setToast(`Trashing ${sender.count} emails from ${sender.name}...`);
         }
 
+        // Run trash in background — fetch fresh IDs then trash
         if ((swipeMode === "trash" || swipeMode === "unsubscribe-trash") && token) {
-            // Fetch fresh IDs then trash (IDs may not be in cache)
-            getSenderMessageIds(token, sender.email)
-                .then((ids) => trashMessages(token, ids))
+            const getIds = getIdsFn();
+            const trash = getTrashFn();
+            getIds(token, sender.email)
+                .then((ids) => trash(token, ids))
                 .then(() => setToast(`Trashed emails from ${sender.name}`))
                 .catch((err) => {
                     console.error("Failed to trash:", err);
@@ -201,6 +289,7 @@ function App() {
         }
     };
 
+    // Swipe right: keep/dismiss
     const handleSwipeRight = (sender: SenderInfo) => {
         removeSender(sender.email);
         setToast(`Kept ${sender.name}`);
@@ -218,12 +307,16 @@ function App() {
         });
     };
 
+    // Batch action for list view — processes selected senders sequentially
     const handleBatchAction = async () => {
         const toProcess = senders.filter((s) => selected.has(s.email));
         if (toProcess.length === 0) return;
         setProcessing(true);
         setError(null);
 
+        const token = getActiveToken();
+        const getIds = getIdsFn();
+        const trash = getTrashFn();
         let failCount = 0;
 
         for (const sender of toProcess) {
@@ -234,8 +327,8 @@ function App() {
                 }
 
                 if ((swipeMode === "trash" || swipeMode === "unsubscribe-trash") && token) {
-                    const ids = await getSenderMessageIds(token, sender.email);
-                    await trashMessages(token, ids);
+                    const ids = await getIds(token, sender.email);
+                    await trash(token, ids);
                 }
             } catch (err) {
                 console.error(`Failed for ${sender.email}:`, err);
@@ -262,6 +355,8 @@ function App() {
 
     const currentSender = senders[0];
     const remaining = senders.length;
+    const isSignedIn = gmailEmail || outlookEmail;
+    const activeEmail = activeProvider === "outlook" ? outlookEmail : gmailEmail;
 
     if (loading) {
         return (
@@ -271,8 +366,8 @@ function App() {
         );
     }
 
-    // Sign-in screen
-    if (!email) {
+    // Sign-in screen — shown when no provider is signed in
+    if (!isSignedIn) {
         return (
             <div className="w-80 p-6 bg-violet-50 text-center">
                 <h1 className="text-2xl font-bold text-yellow-500 mb-1">SortItOut</h1>
@@ -287,12 +382,11 @@ function App() {
                         Sign in with Google
                     </button>
                     <button
-                        disabled
-                        className="w-full bg-white border-2 border-violet-100 text-violet-300 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 cursor-not-allowed"
+                        onClick={handleSignInOutlook}
+                        className="w-full bg-white border-2 border-violet-200 text-violet-700 py-3 px-4 rounded-xl hover:border-violet-400 hover:bg-violet-50 font-medium flex items-center justify-center gap-2 transition-colors"
                     >
                         <span className="text-lg">M</span>
                         Sign in with Microsoft
-                        <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">Soon</span>
                     </button>
                 </div>
             </div>
@@ -309,11 +403,6 @@ function App() {
                 <div className="flex justify-between items-center mb-1">
                     <div className="flex items-center gap-2">
                         <h1 className="text-lg font-bold text-yellow-500">SortItOut</h1>
-                        {provider && (
-                            <span className="text-xs bg-white border border-violet-200 text-violet-500 px-2 py-0.5 rounded-full">
-                                {provider === "gmail" ? "Gmail" : "Outlook"}
-                            </span>
-                        )}
                     </div>
                     <div className="flex items-center gap-1">
                         <button
@@ -330,7 +419,53 @@ function App() {
                         </button>
                     </div>
                 </div>
-                <p className="text-xs text-violet-400 mb-3">{email}</p>
+
+                {/* Provider tabs — only show if at least one provider is signed in */}
+                <div className="flex items-center gap-1 mb-2">
+                    {gmailEmail && (
+                        <button
+                            onClick={() => switchProvider("gmail")}
+                            className={`text-xs px-3 py-1 rounded-full transition-colors ${
+                                activeProvider === "gmail"
+                                    ? "bg-violet-500 text-white"
+                                    : "bg-white text-violet-500 border border-violet-200"
+                            }`}
+                        >
+                            Gmail
+                        </button>
+                    )}
+                    {outlookEmail && (
+                        <button
+                            onClick={() => switchProvider("outlook")}
+                            className={`text-xs px-3 py-1 rounded-full transition-colors ${
+                                activeProvider === "outlook"
+                                    ? "bg-violet-500 text-white"
+                                    : "bg-white text-violet-500 border border-violet-200"
+                            }`}
+                        >
+                            Outlook
+                        </button>
+                    )}
+                    {/* Button to add the other provider if only one is signed in */}
+                    {!gmailEmail && (
+                        <button
+                            onClick={handleSignInGoogle}
+                            className="text-xs px-3 py-1 rounded-full bg-white text-violet-400 border border-dashed border-violet-300 hover:border-violet-400 transition-colors"
+                        >
+                            + Gmail
+                        </button>
+                    )}
+                    {!outlookEmail && (
+                        <button
+                            onClick={handleSignInOutlook}
+                            className="text-xs px-3 py-1 rounded-full bg-white text-violet-400 border border-dashed border-violet-300 hover:border-violet-400 transition-colors"
+                        >
+                            + Outlook
+                        </button>
+                    )}
+                </div>
+
+                <p className="text-xs text-violet-400 mb-3">{activeEmail}</p>
 
                 {/* Error banner */}
                 {error && (
@@ -394,7 +529,7 @@ function App() {
                 ) : scanning ? (
                     <div className="space-y-2">
                         <p className="text-xs text-violet-400 text-center mb-2 animate-pulse">
-                            Digging through your inbox...
+                            Digging through your {activeProvider === "outlook" ? "Outlook" : "Gmail"}...
                         </p>
                         {Array.from({ length: 5 }).map((_, i) => (
                             <SenderSkeleton key={i} />
