@@ -1,4 +1,4 @@
-import { LazyMotion, domAnimation, m } from "motion/react";
+import { LazyMotion, domMax, m } from "motion/react";
 
 interface AnimatedListProps {
     children: React.ReactNode;
@@ -6,7 +6,7 @@ interface AnimatedListProps {
 
 function AnimatedList({ children }: AnimatedListProps) {
     return (
-        <LazyMotion features={domAnimation}>
+        <LazyMotion features={domMax}>
             {children}
         </LazyMotion>
     );
@@ -22,9 +22,10 @@ function AnimatedItem({ children, index }: AnimatedItemProps) {
         <m.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.03, duration: 0.2}}>
+            transition={{ delay: index * 0.03, duration: 0.2 }}
+        >
             {children}
-            </m.div>
+        </m.div>
     );
 }
 export { AnimatedList, AnimatedItem };
