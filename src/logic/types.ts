@@ -8,6 +8,7 @@ export interface SenderInfo {
     email: string;
     name: string;
     count: number;
+    readCount: number;
     unsubscribe: UnsubscribeInfo;
     messageIds: string[];
 }

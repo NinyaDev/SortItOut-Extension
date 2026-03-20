@@ -2,8 +2,8 @@ import { SenderInfo } from "./types";
 import { listMessageIds, getMessageHeaders } from "./gmail";
 import { parseFrom, parseUnsubscribe, getHeaderValue } from "./parser";
 
-//Function that scans emails based on the token and then returns a list of senders with their information, 
-// including the count of emails, unsubscribe options, and message IDs. 
+//Function that scans emails based on the token and then returns a list of senders with their information,
+// including the count of emails, unsubscribe options, and message IDs.
 // The results are sorted by the best unsubscribe method and then by the count of emails.
 
 async function processInChunks<T>(items: string[], fn:(item:string)=> Promise<T>, chunkSize: number = 15): Promise<T[]> {
@@ -20,22 +20,22 @@ export async function scanEmails(token: string): Promise<SenderInfo[]> {
     const ids = await listMessageIds(token);
     console.log("Message IDs found:", ids.length);
 
-    const headerResults = await processInChunks(ids, (id) => getMessageHeaders(token, id).then(headers => ({id, headers})));
-    console.log("Headers retrieved for messages:", headerResults.length);
+    const messageResults = await processInChunks(ids, (id) =>
+        getMessageHeaders(token, id).then((data) => ({ id, ...data }))
+    );
+    console.log("Headers retrieved for messages:", messageResults.length);
 
     const senderMap = new Map<string, SenderInfo>();
 
     let skippedNoFrom = 0;
     let skippedNoUnsub = 0;
 
-    for (const {id , headers} of headerResults) {
+    for (const { id, headers, isRead } of messageResults) {
         const fromRaw = getHeaderValue(headers, "From");
         const unsubRaw = getHeaderValue(headers, "List-Unsubscribe");
 
         if (!fromRaw) { skippedNoFrom++; continue; }
         if (!unsubRaw) { skippedNoUnsub++; continue; }
-
-        // if(!fromRaw || !unsubRaw) continue; //Skip if they don't have the headers that allow unsubscribing
 
         const { name, email } = parseFrom(fromRaw);
         const unsubPostRaw = getHeaderValue(headers, "List-Unsubscribe-Post");
@@ -43,12 +43,14 @@ export async function scanEmails(token: string): Promise<SenderInfo[]> {
         const existing = senderMap.get(email);
         if (existing) {
             existing.count++;
+            if (isRead) existing.readCount++;
             existing.messageIds.push(id);
         } else {
             senderMap.set(email, {
                 email,
                 name,
                 count: 1,
+                readCount: isRead ? 1 : 0,
                 unsubscribe: parseUnsubscribe(unsubRaw, unsubPostRaw),
                 messageIds: [id],
             });

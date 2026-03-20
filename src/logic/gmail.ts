@@ -35,11 +35,16 @@ export async function listMessageIds(token: string, query: string ="unsubscribe"
 }
 
 // Get headers for a specific message ID
-export async function getMessageHeaders(token: string, messageId: string): Promise<{name: string; value: string}[]> {
+export interface MessageData {
+    headers: { name: string; value: string }[];
+    isRead: boolean;
+}
+
+export async function getMessageHeaders(token: string, messageId: string): Promise<MessageData> {
     const url = new URL(`${GMAIL_BASE}/messages/${messageId}`);
     url.searchParams.set("format", "metadata");
     for (const header of HEADERS_TO_FETCH) {
-        url.searchParams.append("metadataHeaders", header); //Before we were getting headers separated by commas, but Gmail API expects multiple metadataHeaders params for multiple headers
+        url.searchParams.append("metadataHeaders", header);
     }
 
     const res = await fetch(url.toString(), {
@@ -49,6 +54,26 @@ export async function getMessageHeaders(token: string, messageId: string): Promi
     if (!res.ok) throw new Error(`Gmail get message failed: ${res.status}`);
 
     const data = await res.json();
-    return data.payload?.headers ?? [];
+    const labelIds: string[] = data.labelIds ?? [];
+    return {
+        headers: data.payload?.headers ?? [],
+        isRead: !labelIds.includes("UNREAD"),
+    };
+}
 
+export async function trashMessages(token: string, messageIds: string[]): Promise<void> {
+    const url = `${GMAIL_BASE}/messages/batchModify`;
+
+    const res = await fetch(url, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            ids: messageIds,
+            addLabelIds: ["TRASH"],
+        }),
+    });
+    if (!res.ok) throw new Error(`Batch trash messages failed: ${res.status}`);
 }
