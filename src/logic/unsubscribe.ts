@@ -8,9 +8,11 @@ export interface UnsubscribeResult {
     url?: string;
 }
 
-// Unsubcribing function that handles both one-click and link-based unsubscribes. For one-click.
-// For link-based unsubscribes, it opens the link in a new tab and marks it as "success" since we can't automate the process.
-export async function unsubscribeFromSender (sender: SenderInfo): Promise<UnsubscribeResult> {
+// Unsubscribing function that handles one-click, link-based, and manual unsubscribes.
+// For one-click: sends POST request to the sender's server via the service worker (background script).
+// For link-based: opens the unsubscribe page in a new tab, marked as false until user confirms with "Did it?" button.
+// For manual: returns the mailto address so the user can handle it themselves.
+export async function unsubscribeFromSender(sender: SenderInfo): Promise<UnsubscribeResult> {
     const {unsubscribe} = sender;
 
     if (unsubscribe.hasOneClick && unsubscribe.httpUrl) {
