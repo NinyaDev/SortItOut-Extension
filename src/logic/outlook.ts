@@ -183,8 +183,8 @@ export async function countUnreadFromSender(token: string, senderEmail: string):
     return count;
 }
 
-// Trash messages — Microsoft Graph batch endpoint, max 20 requests per batch
-// Each DELETE moves the message to Deleted Items folder (recoverable)
+// Trash messages — moves to Deleted Items folder (recoverable)
+// Uses the move endpoint instead of DELETE, which would permanently remove messages
 export async function trashMessages(token: string, messageIds: string[]): Promise<void> {
     for (let i = 0; i < messageIds.length; i += 20) {
         const chunk = messageIds.slice(i, i + 20);
@@ -192,8 +192,10 @@ export async function trashMessages(token: string, messageIds: string[]): Promis
         const batchBody = {
             requests: chunk.map((id, index) => ({
                 id: String(index),
-                method: "DELETE",
-                url: `/me/messages/${id}`,
+                method: "POST",
+                url: `/me/messages/${id}/move`,
+                headers: { "Content-Type": "application/json" },
+                body: { destinationId: "deleteditems" },
             })),
         };
 

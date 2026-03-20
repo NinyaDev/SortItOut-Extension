@@ -53,12 +53,16 @@ function App() {
     const getTrashFn = () => activeProvider === "outlook" ? outlookTrash : gmailTrash;
     const getIdsFn = () => activeProvider === "outlook" ? outlookGetIds : gmailGetIds;
     const getActiveToken = () => activeProvider === "outlook" ? outlookToken : gmailToken;
-    const getCacheKey = () => activeProvider === "outlook" ? "outlookSenders" : "gmailSenders";
 
-    // Strip messageIds from cache to save storage space — IDs are fetched fresh when needed
-    const cacheSenders = (list: SenderInfo[]) => {
+    // Cache helpers — take explicit provider to avoid state timing issues
+    const cacheSendersFor = (provider: Provider, list: SenderInfo[]) => {
+        const key = provider === "outlook" ? "outlookSenders" : "gmailSenders";
         const forCache = list.map(({ messageIds, ...rest }) => ({ ...rest, messageIds: [] }));
-        chrome.storage.local.set({ [getCacheKey()]: forCache });
+        chrome.storage.local.set({ [key]: forCache });
+    };
+
+    const cacheSenders = (list: SenderInfo[]) => {
+        if (activeProvider) cacheSendersFor(activeProvider, list);
     };
 
     // Fetch Gmail user email using Gmail profile endpoint
@@ -76,46 +80,63 @@ function App() {
         .then((data) => data?.emailAddress ?? null);
     };
 
-    // On mount: check for cached Gmail token and Outlook token
+    // On mount: check for cached tokens and restore last active provider
     useEffect(() => {
-        let resolved = false;
+        chrome.storage.local.get(
+            ["outlookToken", "outlookRefreshToken", "outlookEmail", "lastProvider", "gmailSenders", "outlookSenders"],
+            (stored) => {
+                const lastProvider = stored.lastProvider as Provider | undefined;
+                let hasGmail = false;
+                let hasOutlook = false;
 
-        // Check Gmail
-        chrome.identity.getAuthToken({ interactive: false }, (result) => {
-            const accessToken = typeof result === "string" ? result : result?.token;
-            if (accessToken) {
-                fetchGmailEmail(accessToken).then((userEmail) => {
-                    if (userEmail) {
-                        setGmailToken(accessToken);
-                        setGmailEmail(userEmail);
-                        // If no provider is set yet, default to Gmail
-                        setActiveProvider((prev) => prev ?? "gmail");
-                        chrome.storage.local.get("gmailSenders", (data) => {
-                            if (isValidSenderCache(data.gmailSenders)) {
-                                // Only load Gmail cache if Gmail is the active provider
-                                setSenders((prev) => prev.length === 0 ? data.gmailSenders : prev);
+                if (stored.outlookToken && stored.outlookEmail) {
+                    setOutlookToken(stored.outlookToken as string);
+                    setOutlookEmail(stored.outlookEmail as string);
+                    hasOutlook = true;
+                }
+
+                chrome.identity.getAuthToken({ interactive: false }, (result) => {
+                    const accessToken = typeof result === "string" ? result : result?.token;
+                    if (accessToken) {
+                        fetchGmailEmail(accessToken).then((userEmail) => {
+                            if (userEmail) {
+                                setGmailToken(accessToken);
+                                setGmailEmail(userEmail);
+                                hasGmail = true;
+
+                                const providerToUse = lastProvider ?? (hasGmail ? "gmail" : hasOutlook ? "outlook" : null);
+                                if (providerToUse) {
+                                    setActiveProvider(providerToUse);
+                                    const cacheKey = providerToUse === "outlook" ? "outlookSenders" : "gmailSenders";
+                                    if (isValidSenderCache(stored[cacheKey])) {
+                                        setSenders(stored[cacheKey] as SenderInfo[]);
+                                    }
+                                }
                             }
+                            setLoading(false);
+                        }).catch(() => {
+                            if (hasOutlook) {
+                                setActiveProvider("outlook");
+                                if (isValidSenderCache(stored.outlookSenders)) {
+                                    setSenders(stored.outlookSenders as SenderInfo[]);
+                                }
+                            }
+                            setLoading(false);
                         });
+                    } else {
+                        if (hasOutlook) {
+                            setActiveProvider("outlook");
+                            if (isValidSenderCache(stored.outlookSenders)) {
+                                setSenders(stored.outlookSenders as SenderInfo[]);
+                            }
+                        }
+                        setLoading(false);
                     }
-                }).catch((err) => console.error("Gmail auth check failed:", err));
+                });
             }
-            if (!resolved) { resolved = true; }
-        });
-
-        // Check Outlook — load from chrome.storage.local
-        chrome.storage.local.get(["outlookToken", "outlookRefreshToken", "outlookEmail"], (data) => {
-            if (data.outlookToken && data.outlookEmail) {
-                setOutlookToken(data.outlookToken);
-                setOutlookEmail(data.outlookEmail);
-                // If Gmail didn't set a provider, use Outlook
-                setActiveProvider((prev) => prev ?? "outlook");
-            }
-            // Both checks done
-            setLoading(false);
-        });
+        );
     }, []);
 
-    // Auto-dismiss toast after 2 seconds
     useEffect(() => {
         if (toast) {
             const timer = setTimeout(() => setToast(null), 2000);
@@ -123,18 +144,16 @@ function App() {
         }
     }, [toast]);
 
-    // Update badge count when results change
     useEffect(() => {
         const count = results.filter((r) => r.success).length;
         if (count > 0) {
             chrome.action.setBadgeText({ text: String(count) });
-            chrome.action.setBadgeBackgroundColor({ color: "#8b5cf6" });
+            chrome.action.setBadgeBackgroundColor({ color: "#7c3aed" });
         } else {
             chrome.action.setBadgeText({ text: "" });
         }
     }, [results]);
 
-    // Sign in with Google — uses Chrome's built-in OAuth
     const handleSignInGoogle = () => {
         setLoading(true);
         chrome.identity.getAuthToken({ interactive: true }, (result) => {
@@ -152,6 +171,7 @@ function App() {
                         setGmailToken(accessToken);
                         setGmailEmail(userEmail);
                         setActiveProvider("gmail");
+                        chrome.storage.local.set({ lastProvider: "gmail" });
                         chrome.storage.local.get("gmailSenders", (data) => {
                             if (isValidSenderCache(data.gmailSenders)) {
                                 setSenders(data.gmailSenders);
@@ -164,39 +184,33 @@ function App() {
         });
     };
 
-    // Sign in with Microsoft — sends message to service worker which handles the OAuth flow.
-    // The popup may close during auth, so the service worker saves tokens to storage.
-    // When the popup reopens, useEffect finds the tokens and loads Outlook state.
     const handleSignInOutlook = () => {
         chrome.runtime.sendMessage({ type: "OUTLOOK_SIGN_IN" });
         setToast("Microsoft sign-in opened...");
     };
 
-    // Switch between Gmail and Outlook (both stay signed in)
     const switchProvider = (provider: Provider) => {
         if (provider === activeProvider) return;
 
-        // Save current senders before switching
-        if (senders.length > 0) {
-            cacheSenders(senders);
+        if (senders.length > 0 && activeProvider) {
+            cacheSendersFor(activeProvider, senders);
         }
 
         setActiveProvider(provider);
+        chrome.storage.local.set({ lastProvider: provider });
         setSenders([]);
         setResults([]);
         setSelected(new Set());
         setError(null);
 
-        // Load cached senders for the new provider
         const key = provider === "outlook" ? "outlookSenders" : "gmailSenders";
         chrome.storage.local.get(key, (data) => {
             if (isValidSenderCache(data[key])) {
-                setSenders(data[key]);
+                setSenders(data[key] as SenderInfo[]);
             }
         });
     };
 
-    // Logout from the active provider only
     const handleLogout = () => {
         if (activeProvider === "gmail" && gmailToken) {
             chrome.identity.removeCachedAuthToken({ token: gmailToken });
@@ -214,7 +228,6 @@ function App() {
         setSelected(new Set());
         setError(null);
 
-        // If the other provider is still signed in, switch to it
         if (activeProvider === "gmail" && outlookToken) {
             switchProvider("outlook");
         } else if (activeProvider === "outlook" && gmailToken) {
@@ -224,7 +237,6 @@ function App() {
         }
     };
 
-    // Scan emails using the active provider's scanner
     const handleScan = async () => {
         const token = getActiveToken();
         if (!token) return;
@@ -254,12 +266,10 @@ function App() {
         });
     };
 
-    // Swipe left: unsubscribe and/or trash, then remove card immediately
     const handleSwipeLeft = (sender: SenderInfo) => {
         removeSender(sender.email);
         const token = getActiveToken();
 
-        // Run unsubscribe in background
         if (swipeMode === "unsubscribe" || swipeMode === "unsubscribe-trash") {
             unsubscribeFromSender(sender).then((result) => {
                 setResults((prev) => [...prev, result]);
@@ -275,7 +285,6 @@ function App() {
             setToast(`Trashing ${sender.count} emails from ${sender.name}...`);
         }
 
-        // Run trash in background — fetch fresh IDs then trash
         if ((swipeMode === "trash" || swipeMode === "unsubscribe-trash") && token) {
             const getIds = getIdsFn();
             const trash = getTrashFn();
@@ -289,7 +298,6 @@ function App() {
         }
     };
 
-    // Swipe right: keep/dismiss
     const handleSwipeRight = (sender: SenderInfo) => {
         removeSender(sender.email);
         setToast(`Kept ${sender.name}`);
@@ -307,7 +315,6 @@ function App() {
         });
     };
 
-    // Batch action for list view — processes selected senders sequentially
     const handleBatchAction = async () => {
         const toProcess = senders.filter((s) => selected.has(s.email));
         if (toProcess.length === 0) return;
@@ -360,30 +367,30 @@ function App() {
 
     if (loading) {
         return (
-            <div className="w-80 p-4 bg-violet-50 min-h-[200px] flex items-center justify-center">
-                <p className="text-violet-400 animate-pulse">Loading...</p>
+            <div className="w-80 p-4 bg-white min-h-[200px] flex items-center justify-center">
+                <p className="text-gray-400 animate-pulse">Loading...</p>
             </div>
         );
     }
 
-    // Sign-in screen — shown when no provider is signed in
+    // Sign-in screen
     if (!isSignedIn) {
         return (
-            <div className="w-80 p-6 bg-violet-50 text-center">
-                <h1 className="text-2xl font-bold text-yellow-500 mb-1">SortItOut</h1>
-                <p className="text-sm text-violet-500 mb-8">Your inbox is a mess. Let's fix that.</p>
+            <div className="w-80 p-6 bg-white text-center">
+                <h1 className="text-2xl font-bold text-gray-800 mb-1">SortItOut</h1>
+                <p className="text-sm text-gray-400 mb-8">Your inbox is a mess. Let's fix that.</p>
 
                 <div className="space-y-3">
                     <button
                         onClick={handleSignInGoogle}
-                        className="w-full bg-white border-2 border-violet-200 text-violet-700 py-3 px-4 rounded-xl hover:border-violet-400 hover:bg-violet-50 font-medium flex items-center justify-center gap-2 transition-colors"
+                        className="w-full bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl hover:border-violet-300 hover:bg-gray-50 font-medium flex items-center justify-center gap-2 transition-colors"
                     >
                         <span className="text-lg">G</span>
                         Sign in with Google
                     </button>
                     <button
                         onClick={handleSignInOutlook}
-                        className="w-full bg-white border-2 border-violet-200 text-violet-700 py-3 px-4 rounded-xl hover:border-violet-400 hover:bg-violet-50 font-medium flex items-center justify-center gap-2 transition-colors"
+                        className="w-full bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl hover:border-violet-300 hover:bg-gray-50 font-medium flex items-center justify-center gap-2 transition-colors"
                     >
                         <span className="text-lg">M</span>
                         Sign in with Microsoft
@@ -395,32 +402,30 @@ function App() {
 
     // Main app screen
     return (
-        <div className="w-80 p-4 bg-violet-50 relative min-h-[400px]">
+        <div className="w-80 p-4 bg-white relative min-h-[400px]">
             {showInfo && <InfoPanel onClose={() => setShowInfo(false)} />}
 
             <div>
                 {/* Header */}
                 <div className="flex justify-between items-center mb-1">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-lg font-bold text-yellow-500">SortItOut</h1>
-                    </div>
+                    <h1 className="text-lg font-bold text-gray-800">SortItOut</h1>
                     <div className="flex items-center gap-1">
                         <button
                             onClick={() => setShowInfo(true)}
-                            className="w-6 h-6 rounded-full bg-violet-200 text-violet-600 text-xs font-bold hover:bg-violet-300 flex items-center justify-center transition-colors"
+                            className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold hover:bg-violet-100 hover:text-violet-600 flex items-center justify-center transition-colors"
                         >
                             ?
                         </button>
                         <button
                             onClick={handleLogout}
-                            className="text-xs text-violet-400 hover:text-red-400 px-1 transition-colors"
+                            className="text-xs text-gray-400 hover:text-red-400 px-1 transition-colors"
                         >
                             Logout
                         </button>
                     </div>
                 </div>
 
-                {/* Provider tabs — only show if at least one provider is signed in */}
+                {/* Provider tabs */}
                 <div className="flex items-center gap-1 mb-2">
                     {gmailEmail && (
                         <button
@@ -428,7 +433,7 @@ function App() {
                             className={`text-xs px-3 py-1 rounded-full transition-colors ${
                                 activeProvider === "gmail"
                                     ? "bg-violet-500 text-white"
-                                    : "bg-white text-violet-500 border border-violet-200"
+                                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                             }`}
                         >
                             Gmail
@@ -440,17 +445,16 @@ function App() {
                             className={`text-xs px-3 py-1 rounded-full transition-colors ${
                                 activeProvider === "outlook"
                                     ? "bg-violet-500 text-white"
-                                    : "bg-white text-violet-500 border border-violet-200"
+                                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                             }`}
                         >
                             Outlook
                         </button>
                     )}
-                    {/* Button to add the other provider if only one is signed in */}
                     {!gmailEmail && (
                         <button
                             onClick={handleSignInGoogle}
-                            className="text-xs px-3 py-1 rounded-full bg-white text-violet-400 border border-dashed border-violet-300 hover:border-violet-400 transition-colors"
+                            className="text-xs px-3 py-1 rounded-full bg-white text-gray-400 border border-dashed border-gray-300 hover:border-violet-300 transition-colors"
                         >
                             + Gmail
                         </button>
@@ -458,14 +462,14 @@ function App() {
                     {!outlookEmail && (
                         <button
                             onClick={handleSignInOutlook}
-                            className="text-xs px-3 py-1 rounded-full bg-white text-violet-400 border border-dashed border-violet-300 hover:border-violet-400 transition-colors"
+                            className="text-xs px-3 py-1 rounded-full bg-white text-gray-400 border border-dashed border-gray-300 hover:border-violet-300 transition-colors"
                         >
                             + Outlook
                         </button>
                     )}
                 </div>
 
-                <p className="text-xs text-violet-400 mb-3">{activeEmail}</p>
+                <p className="text-xs text-gray-400 mb-3">{activeEmail}</p>
 
                 {/* Error banner */}
                 {error && (
@@ -475,30 +479,30 @@ function App() {
                     </div>
                 )}
 
-                {/* Toast notification */}
+                {/* Toast */}
                 {toast && (
-                    <div className="bg-violet-100 border border-violet-200 text-violet-700 text-xs p-2 rounded-xl mb-3 text-center animate-pulse">
+                    <div className="bg-violet-50 border border-violet-200 text-violet-600 text-xs p-2 rounded-xl mb-3 text-center">
                         {toast}
                     </div>
                 )}
 
-                {/* Scan button / Skeleton / Results */}
+                {/* Scan / Skeleton / Results */}
                 {senders.length === 0 && !scanning ? (
                     <div className="text-center py-6">
                         {results.length > 0 && (
                             <div className="mb-4">
-                                <p className="text-sm font-bold text-violet-700 mb-1">
+                                <p className="text-sm font-semibold text-gray-700 mb-1">
                                     All done! {results.filter((r) => r.success).length} sorted out
                                 </p>
-                                <p className="text-xs text-violet-400 mb-3">Your inbox thanks you</p>
+                                <p className="text-xs text-gray-400 mb-3">Your inbox thanks you</p>
                                 <ul className="space-y-1 text-left max-h-40 overflow-y-auto">
                                     {results.map((r) => (
                                         <li key={r.email} className="text-xs flex justify-between items-center">
                                             <div>
-                                                <span className={r.success ? "text-emerald-600" : "text-yellow-600"}>
+                                                <span className={r.success ? "text-emerald-600" : "text-amber-500"}>
                                                     {r.success ? "Gone!" : r.method === "link" ? "Tab opened" : "Manual"}
                                                 </span>
-                                                <span className="text-violet-500">{" — "}{r.name}</span>
+                                                <span className="text-gray-500">{" — "}{r.name}</span>
                                             </div>
                                             {r.method === "link" && !r.success && (
                                                 <button
@@ -509,7 +513,7 @@ function App() {
                                                             )
                                                         );
                                                     }}
-                                                    className="text-yellow-500 hover:underline ml-2 whitespace-nowrap"
+                                                    className="text-violet-500 hover:underline ml-2 whitespace-nowrap"
                                                 >
                                                     Did it?
                                                 </button>
@@ -521,14 +525,14 @@ function App() {
                         )}
                         <button
                             onClick={handleScan}
-                            className="w-full bg-violet-500 text-white py-3 px-4 rounded-xl hover:bg-violet-600 font-bold transition-colors"
+                            className="w-full bg-violet-500 text-white py-3 px-4 rounded-xl hover:bg-violet-600 font-semibold transition-colors"
                         >
                             {results.length > 0 ? "Look for more" : "First cleanup!"}
                         </button>
                     </div>
                 ) : scanning ? (
                     <div className="space-y-2">
-                        <p className="text-xs text-violet-400 text-center mb-2 animate-pulse">
+                        <p className="text-xs text-gray-400 text-center mb-2 animate-pulse">
                             Digging through your {activeProvider === "outlook" ? "Outlook" : "Gmail"}...
                         </p>
                         {Array.from({ length: 5 }).map((_, i) => (
@@ -545,7 +549,7 @@ function App() {
                                     className={`text-xs px-3 py-1 rounded-full transition-colors ${
                                         viewMode === "card"
                                             ? "bg-violet-500 text-white"
-                                            : "bg-white text-violet-500 border border-violet-200"
+                                            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                     }`}
                                 >
                                     Cards
@@ -555,7 +559,7 @@ function App() {
                                     className={`text-xs px-3 py-1 rounded-full transition-colors ${
                                         viewMode === "list"
                                             ? "bg-violet-500 text-white"
-                                            : "bg-white text-violet-500 border border-violet-200"
+                                            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                     }`}
                                 >
                                     List
@@ -564,7 +568,7 @@ function App() {
                             <select
                                 value={swipeMode}
                                 onChange={(e) => setSwipeMode(e.target.value as SwipeMode)}
-                                className="text-xs bg-white border border-violet-200 text-violet-600 rounded-lg px-2 py-1"
+                                className="text-xs bg-white border border-gray-200 text-gray-600 rounded-lg px-2 py-1"
                             >
                                 <option value="unsubscribe">Unsubscribe</option>
                                 <option value="unsubscribe-trash">Unsub & Trash</option>
@@ -575,7 +579,7 @@ function App() {
                         {/* CARD VIEW */}
                         {viewMode === "card" && currentSender ? (
                             <div>
-                                <p className="text-xs text-violet-400 text-center mb-2">
+                                <p className="text-xs text-gray-400 text-center mb-2">
                                     {remaining} sender{remaining !== 1 ? "s" : ""} left
                                 </p>
 
@@ -588,41 +592,41 @@ function App() {
                                     >
                                         <div className="p-6">
                                             <div className="text-center mb-4">
-                                                <div className="w-16 h-16 bg-violet-100 rounded-full mx-auto mb-3 flex items-center justify-center">
-                                                    <span className="text-2xl font-bold text-violet-500">
+                                                <div className="w-16 h-16 bg-violet-50 rounded-full mx-auto mb-3 flex items-center justify-center">
+                                                    <span className="text-2xl font-bold text-violet-400">
                                                         {currentSender.name.charAt(0).toUpperCase()}
                                                     </span>
                                                 </div>
-                                                <h2 className="font-bold text-lg text-violet-800 truncate">
+                                                <h2 className="font-bold text-lg text-gray-800 truncate">
                                                     {currentSender.name}
                                                 </h2>
-                                                <p className="text-sm text-violet-400 truncate">
+                                                <p className="text-sm text-gray-400 truncate">
                                                     {currentSender.email}
                                                 </p>
                                             </div>
 
                                             <div className="grid grid-cols-2 gap-3 mb-4">
-                                                <div className="bg-violet-50 rounded-xl p-3 text-center">
-                                                    <p className="text-2xl font-bold text-yellow-500">
+                                                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                                                    <p className="text-2xl font-bold text-gray-800">
                                                         {currentSender.count}
                                                     </p>
-                                                    <p className="text-xs text-violet-400">emails</p>
+                                                    <p className="text-xs text-gray-400">emails</p>
                                                 </div>
-                                                <div className="bg-violet-50 rounded-xl p-3 text-center">
-                                                    <p className="text-2xl font-bold text-yellow-500">
+                                                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                                                    <p className="text-2xl font-bold text-gray-800">
                                                         {currentSender.openRate}%
                                                     </p>
-                                                    <p className="text-xs text-violet-400">opened</p>
+                                                    <p className="text-xs text-gray-400">opened</p>
                                                 </div>
                                             </div>
 
                                             <div className="text-center">
                                                 <span className={`text-xs px-3 py-1 rounded-full font-medium ${
                                                     currentSender.unsubscribe.hasOneClick
-                                                        ? "bg-emerald-100 text-emerald-700"
+                                                        ? "bg-emerald-50 text-emerald-600"
                                                         : currentSender.unsubscribe.httpUrl
-                                                        ? "bg-yellow-100 text-yellow-700"
-                                                        : "bg-violet-100 text-violet-500"
+                                                        ? "bg-amber-50 text-amber-600"
+                                                        : "bg-gray-100 text-gray-500"
                                                 }`}>
                                                     {currentSender.unsubscribe.hasOneClick
                                                         ? "One-click"
@@ -657,7 +661,7 @@ function App() {
                                     >
                                         {selected.size === senders.length ? "Deselect all" : "Select all"}
                                     </button>
-                                    <span className="text-xs text-violet-400">{selected.size} selected</span>
+                                    <span className="text-xs text-gray-400">{selected.size} selected</span>
                                 </div>
 
                                 <AnimatedList>
@@ -668,8 +672,8 @@ function App() {
                                                     onClick={() => toggleSelect(sender.email)}
                                                     className={`p-3 rounded-xl cursor-pointer transition-colors ${
                                                         selected.has(sender.email)
-                                                            ? "bg-violet-100 border-2 border-violet-300"
-                                                            : "bg-white border-2 border-transparent hover:border-violet-200"
+                                                            ? "bg-violet-50 border border-violet-200"
+                                                            : "bg-gray-50 border border-transparent hover:border-gray-200"
                                                     }`}
                                                 >
                                                     <div className="flex justify-between items-center">
@@ -681,13 +685,13 @@ function App() {
                                                                 className="accent-violet-500 flex-shrink-0"
                                                             />
                                                             <div className="min-w-0">
-                                                                <p className="font-medium text-sm text-violet-800 truncate">{sender.name}</p>
-                                                                <p className="text-xs text-violet-400 truncate">{sender.email}</p>
+                                                                <p className="font-medium text-sm text-gray-800 truncate">{sender.name}</p>
+                                                                <p className="text-xs text-gray-400 truncate">{sender.email}</p>
                                                             </div>
                                                         </div>
                                                         <div className="text-right flex-shrink-0 ml-2">
-                                                            <span className="text-sm font-bold text-yellow-500">{sender.count}</span>
-                                                            <p className="text-xs text-violet-400">{sender.openRate}% opened</p>
+                                                            <span className="text-sm font-bold text-gray-700">{sender.count}</span>
+                                                            <p className="text-xs text-gray-400">{sender.openRate}% opened</p>
                                                         </div>
                                                     </div>
                                                 </li>
@@ -699,7 +703,7 @@ function App() {
                                 <button
                                     onClick={handleBatchAction}
                                     disabled={selected.size === 0 || processing}
-                                    className="w-full bg-violet-500 text-white py-2 px-4 rounded-xl text-sm font-bold hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                    className="w-full bg-violet-500 text-white py-2 px-4 rounded-xl text-sm font-semibold hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 >
                                     {processing
                                         ? "Working on it..."

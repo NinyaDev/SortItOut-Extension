@@ -2,13 +2,17 @@ import { SenderInfo } from "./types";
 import { listMessageIds, getMessageData, countSenderMessages, countUnreadFromSender } from "./outlook";
 import { parseFrom, parseUnsubscribe } from "./parser";
 
-// Processes items in chunks to avoid rate limits
-async function processInChunks<T>(items: string[], fn: (item: string) => Promise<T>, chunkSize: number = 15): Promise<T[]> {
+// Processes items in chunks with a delay between chunks to avoid Microsoft Graph rate limits
+async function processInChunks<T>(items: string[], fn: (item: string) => Promise<T>, chunkSize: number = 4, delayMs: number = 1000): Promise<T[]> {
     const results: T[] = [];
     for (let i = 0; i < items.length; i += chunkSize) {
         const chunk = items.slice(i, i + chunkSize);
         const chunkResults = await Promise.all(chunk.map(fn));
         results.push(...chunkResults);
+        // Wait between chunks to stay under Microsoft's rate limits
+        if (i + chunkSize < items.length) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
     }
     return results;
 }
@@ -70,7 +74,7 @@ export async function scanOutlookEmails(token: string): Promise<SenderInfo[]> {
         }
 
         return email;
-    }, 10);
+    }, 4);
 
     // Filter out senders with 0 emails (could have been deleted between Phase 1 and Phase 2)
     const validSenders = Array.from(senderMap.values()).filter((s) => s.count > 0);
