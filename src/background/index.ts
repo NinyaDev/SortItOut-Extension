@@ -1,7 +1,5 @@
 import { outlookSignIn, getOutlookUserEmail } from "../logic/outlook-auth";
 
-console.log("SortItOut service worker loaded");
-
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // One-click unsubscribe POST — works for both Gmail and Outlook senders
     if (message.type === "ONE_CLICK_UNSUBSCRIBE") {

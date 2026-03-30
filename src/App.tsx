@@ -259,18 +259,32 @@ function App() {
         setResults([]);
         setSelected(new Set());
         try {
-            const scanResults = activeProvider === "outlook"
-                ? await scanOutlookEmails(token)
-                : await scanEmails(token);
-
-            // Filter out senders the user has already dealt with
+            // Load the dismissed list once — used to filter both early and final results
             const dismissedSet = await getActiveDismissedEmails(activeProvider!);
-            const filtered = scanResults.filter(
-                (s) => !dismissedSet.has(s.email.toLowerCase())
-            );
+            const filterDismissed = (list: SenderInfo[]) =>
+                list.filter((s) => !dismissedSet.has(s.email.toLowerCase()));
 
-            setSenders(filtered);
-            cacheSendersFor(activeProvider!, filtered);
+            if (activeProvider === "outlook") {
+                // Progressive loading: show senders as soon as Phase 1 finishes
+                // (with sample counts), then silently update with accurate counts
+                // when Phase 2 completes. This cuts perceived wait from ~50s to ~3-5s.
+                const finalResults = await scanOutlookEmails(token, (phase1Senders) => {
+                    const filtered = filterDismissed(phase1Senders);
+                    setSenders(filtered);
+                    setScanning(false); // Stop skeleton, show results immediately
+                });
+
+                // Phase 2 done — update with enriched counts
+                const filtered = filterDismissed(finalResults);
+                setSenders(filtered);
+                cacheSendersFor("outlook", filtered);
+            } else {
+                // Gmail is already fast (~5s), no progressive loading needed
+                const scanResults = await scanEmails(token);
+                const filtered = filterDismissed(scanResults);
+                setSenders(filtered);
+                cacheSendersFor("gmail", filtered);
+            }
         } catch (err) {
             console.error("Scan Failed:", err);
             setError("Scan failed. Check your connection and try again.");
@@ -582,7 +596,7 @@ function App() {
                     </div>
                 ) : (
                     <div>
-                        {/* View toggle + mode selector */}
+                        {/* View toggle + rescan + mode selector */}
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-1">
                                 <button
@@ -604,6 +618,13 @@ function App() {
                                     }`}
                                 >
                                     List
+                                </button>
+                                <button
+                                    onClick={handleScan}
+                                    className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-600 transition-colors"
+                                    title="Rescan inbox"
+                                >
+                                    Rescan
                                 </button>
                             </div>
                             <select
