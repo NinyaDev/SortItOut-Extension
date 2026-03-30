@@ -5,11 +5,13 @@ import { scanOutlookEmails } from "./logic/outlook-scanner";
 import { unsubscribeFromSender, UnsubscribeResult } from "./logic/unsubscribe";
 import { trashMessages as gmailTrash, getSenderMessageIds as gmailGetIds } from "./logic/gmail";
 import { trashMessages as outlookTrash, getSenderMessageIds as outlookGetIds } from "./logic/outlook";
+import { getActiveDismissedEmails, addToDismissed, addMultipleToDismissed } from "./logic/dismissed";
 // Outlook auth is handled in the service worker (popup closes during auth flow)
 import SenderSkeleton from "./ui/SenderSkeleton";
 import { AnimatedList, AnimatedItem } from "./ui/AnimatedList";
 import SwipeableCard from "./ui/SwipeableCard";
 import InfoPanel from "./ui/InfoPanel";
+import DismissedPanel from "./ui/DismissedPanel";
 
 type SwipeMode = "unsubscribe" | "unsubscribe-trash" | "trash";
 type ViewMode = "card" | "list";
@@ -37,6 +39,7 @@ function App() {
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [processing, setProcessing] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
+    const [showDismissed, setShowDismissed] = useState(false);
 
     // Helper: validate cached sender data before loading
     const isValidSenderCache = (data: unknown): data is SenderInfo[] => {
@@ -185,8 +188,19 @@ function App() {
     };
 
     const handleSignInOutlook = () => {
-        chrome.runtime.sendMessage({ type: "OUTLOOK_SIGN_IN" });
         setToast("Microsoft sign-in opened...");
+        chrome.runtime.sendMessage({ type: "OUTLOOK_SIGN_IN" }, (response) => {
+            if (!response?.success) return;
+
+            // Auth succeeded — grab the token from storage and update UI
+            chrome.storage.local.get(["outlookToken"], (stored) => {
+                if (!stored.outlookToken) return;
+                setOutlookToken(stored.outlookToken as string);
+                setOutlookEmail(response.email);
+                setActiveProvider("outlook");
+                chrome.storage.local.set({ lastProvider: "outlook" });
+            });
+        });
     };
 
     const switchProvider = (provider: Provider) => {
@@ -248,8 +262,15 @@ function App() {
             const scanResults = activeProvider === "outlook"
                 ? await scanOutlookEmails(token)
                 : await scanEmails(token);
-            setSenders(scanResults);
-            cacheSenders(scanResults);
+
+            // Filter out senders the user has already dealt with
+            const dismissedSet = await getActiveDismissedEmails(activeProvider!);
+            const filtered = scanResults.filter(
+                (s) => !dismissedSet.has(s.email.toLowerCase())
+            );
+
+            setSenders(filtered);
+            cacheSendersFor(activeProvider!, filtered);
         } catch (err) {
             console.error("Scan Failed:", err);
             setError("Scan failed. Check your connection and try again.");
@@ -268,6 +289,7 @@ function App() {
 
     const handleSwipeLeft = (sender: SenderInfo) => {
         removeSender(sender.email);
+        if (activeProvider) addToDismissed(activeProvider, sender.email, "unsubscribed");
         const token = getActiveToken();
 
         if (swipeMode === "unsubscribe" || swipeMode === "unsubscribe-trash") {
@@ -300,6 +322,7 @@ function App() {
 
     const handleSwipeRight = (sender: SenderInfo) => {
         removeSender(sender.email);
+        if (activeProvider) addToDismissed(activeProvider, sender.email, "kept");
         setToast(`Kept ${sender.name}`);
     };
 
@@ -345,6 +368,14 @@ function App() {
 
         if (failCount > 0) {
             setError(`${failCount} sender${failCount > 1 ? "s" : ""} failed. Try again or rescan.`);
+        }
+
+        // Mark all processed senders as dismissed
+        if (activeProvider) {
+            await addMultipleToDismissed(
+                activeProvider,
+                toProcess.map((s) => ({ email: s.email, action: "unsubscribed" as const }))
+            );
         }
 
         const updated = senders.filter((s) => !selected.has(s.email));
@@ -404,12 +435,22 @@ function App() {
     return (
         <div className="w-80 p-4 bg-white relative min-h-[400px]">
             {showInfo && <InfoPanel onClose={() => setShowInfo(false)} />}
+            {showDismissed && activeProvider && (
+                <DismissedPanel provider={activeProvider} onClose={() => setShowDismissed(false)} />
+            )}
 
             <div>
                 {/* Header */}
                 <div className="flex justify-between items-center mb-1">
                     <h1 className="text-lg font-bold text-gray-800">SortItOut</h1>
                     <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setShowDismissed(true)}
+                            className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold hover:bg-violet-100 hover:text-violet-600 flex items-center justify-center transition-colors"
+                            title="Dismissed senders"
+                        >
+                            D
+                        </button>
                         <button
                             onClick={() => setShowInfo(true)}
                             className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold hover:bg-violet-100 hover:text-violet-600 flex items-center justify-center transition-colors"

@@ -1,3 +1,11 @@
 node_modules/
 dist/
 .claude/
+
+# Build artifacts
+*.crx
+*.pem
+*.zip
+
+# macOS
+.DS_Store

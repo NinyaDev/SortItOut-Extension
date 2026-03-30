@@ -1,5 +1,6 @@
 {
     "manifest_version": 3,
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2xqhgJa5Ja+kxz5v2sk75pYaub8odSle9Djw3C0tWDsonHP/XVoO5u8mF2dIiglX+eEHrhiXOeSeBX9XluoaUDsKsCp7IVRq+ngU9hbCwjHSQMPQsRedKhVjbS5oWIFp93HohdXoaTbAoRkWSFKiqiOY3TQu2I/sPajZZvgnfVwMqja6F2t+YPBfzJ82zoBk+tILyjtqnTJzGC0hcVu2A/rjrepsg0+4D4UYAo2umgUbdlIiyaUViKU4rnFw3JKRiB+ijIwjaXAIUP7sMRk669RZzDsRh+TiHb3MCCJqAwtvMxzOa5uXuBLyi/Wo5nGEQ0Xce+TaUUnZ9yDnyxKw4wIDAQAB",
     "name": "SortItOut",
     "version": "1.0",
     "description": "Sort out newsletters, promotions and emails you don't care about in simple swipes. Everything locally on your device!",
