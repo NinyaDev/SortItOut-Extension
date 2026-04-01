@@ -35,13 +35,13 @@ function SwipeableCard({ children, onSwipeLeft, onSwipeRight, leftLabel, rightLa
     return (
         <div className="relative w-full h-full">
             <m.div
-                className="absolute top-4 left-4 bg-emerald-400 text-white text-sm font-bold px-3 py-1 rounded-lg z-10 pointer-events-none"
+                className="absolute top-4 left-4 bg-emerald-500 text-white text-sm font-semibold px-3 py-1 rounded-lg z-10 pointer-events-none"
                 style={{ opacity: rightOpacity }}
             >
                 {rightLabel}
             </m.div>
             <m.div
-                className="absolute top-4 right-4 bg-red-400 text-white text-sm font-bold px-3 py-1 rounded-lg z-10 pointer-events-none"
+                className="absolute top-4 right-4 bg-red-400 text-white text-sm font-semibold px-3 py-1 rounded-lg z-10 pointer-events-none"
                 style={{ opacity: leftOpacity }}
             >
                 {leftLabel}
@@ -55,7 +55,7 @@ function SwipeableCard({ children, onSwipeLeft, onSwipeRight, leftLabel, rightLa
                 animate={controls}
                 onDragEnd={handleDragEnd}
                 whileDrag={{ cursor: "grabbing" }}
-                className="bg-white rounded-2xl shadow-md border border-violet-200 cursor-grab"
+                className="bg-white rounded-2xl shadow-sm border border-gray-200 cursor-grab"
             >
                 {children}
             </m.div>

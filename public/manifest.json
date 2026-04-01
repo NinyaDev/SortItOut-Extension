@@ -1,10 +1,11 @@
 {
     "manifest_version": 3,
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2xqhgJa5Ja+kxz5v2sk75pYaub8odSle9Djw3C0tWDsonHP/XVoO5u8mF2dIiglX+eEHrhiXOeSeBX9XluoaUDsKsCp7IVRq+ngU9hbCwjHSQMPQsRedKhVjbS5oWIFp93HohdXoaTbAoRkWSFKiqiOY3TQu2I/sPajZZvgnfVwMqja6F2t+YPBfzJ82zoBk+tILyjtqnTJzGC0hcVu2A/rjrepsg0+4D4UYAo2umgUbdlIiyaUViKU4rnFw3JKRiB+ijIwjaXAIUP7sMRk669RZzDsRh+TiHb3MCCJqAwtvMxzOa5uXuBLyi/Wo5nGEQ0Xce+TaUUnZ9yDnyxKw4wIDAQAB",
     "name": "SortItOut",
     "version": "1.0",
     "description": "Sort out newsletters, promotions and emails you don't care about in simple swipes. Everything locally on your device!",
-    "permissions": ["identity","alarms","storage"],
-    "host_permissions": ["https://www.gmail.googleapis.com/*", "https://*/*"],
+    "permissions": ["identity","storage"],
+    "host_permissions": ["https://www.gmail.googleapis.com/*", "https://gmail.googleapis.com/*", "https://graph.microsoft.com/*", "https://login.microsoftonline.com/*"],
     "oauth2": {
         "client_id": "967825888472-kcsfrnmhpke786a2ks5v19fk7u9gj0f9.apps.googleusercontent.com",
         "scopes": ["https://www.googleapis.com/auth/gmail.modify"]
@@ -13,7 +14,16 @@
         "service_worker": "background.js",
         "type": "module"
     },
+    "icons": {
+        "16": "icons/SortItOut_logo_16.png",
+        "48": "icons/SortItOut_logo_48.png",
+        "128": "icons/SortItOut_logo_128.png"
+    },
     "action":{
-        "default_popup": "popup.html"
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/SortItOut_logo_16.png",
+            "48": "icons/SortItOut_logo_48.png"
+        }
     }
 }
