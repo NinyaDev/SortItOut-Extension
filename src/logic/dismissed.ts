@@ -4,7 +4,6 @@ export interface DismissedEntry {
     action: "kept" | "unsubscribed";
 }
 
-type Provider = "gmail" | "outlook"
 export type CooldownSetting = "1week" | "1month" | "never";
 
 const COOLDOWN_MS: Record<CooldownSetting, number> = {
@@ -13,13 +12,14 @@ const COOLDOWN_MS: Record<CooldownSetting, number> = {
     "never": Infinity,
 }
 
-function storageKey(provider: Provider): string {
-    return provider === "outlook" ? "outlookDismissed" : "gmailDismissed";
+// Key by account email so each account has its own dismissed list
+function storageKey(accountEmail: string): string {
+    return `dismissed_${accountEmail.toLowerCase()}`;
 }
 
-//Read the full list from storage
-export function getDismissedList(provider: Provider): Promise<DismissedEntry[]> {
-    const key = storageKey(provider);
+// Read the full list from storage for a specific account
+export function getDismissedList(accountEmail: string): Promise<DismissedEntry[]> {
+    const key = storageKey(accountEmail);
     return new Promise((resolve) => {
         chrome.storage.local.get(key, (data) => {
             resolve((data[key] as DismissedEntry[]) ?? []);
@@ -28,9 +28,9 @@ export function getDismissedList(provider: Provider): Promise<DismissedEntry[]> 
 }
 
 // Get the set of emails that should currently be hidden from scan results
-export async function getActiveDismissedEmails(provider: Provider): Promise<Set<string>> {
-    const [list, cooldown] = await Promise.all([                                                                                                             
-        getDismissedList(provider),                                                                                                                          
+export async function getActiveDismissedEmails(accountEmail: string): Promise<Set<string>> {
+    const [list, cooldown] = await Promise.all([
+        getDismissedList(accountEmail),                                                                                                                          
         getCooldownSetting(),                                                                                                                                
     ]);         
 
@@ -49,10 +49,10 @@ export async function getActiveDismissedEmails(provider: Provider): Promise<Set<
     return new Set(activeEmails);
 }
 
-// Add a single render to the dismissed list
-export async function addToDismissed(provider: Provider, email: string, action: "kept" | "unsubscribed"): Promise<void> {
-    const key = storageKey(provider);
-    const list = await getDismissedList(provider);
+// Add a single sender to the dismissed list
+export async function addToDismissed(accountEmail: string, email: string, action: "kept" | "unsubscribed"): Promise<void> {
+    const key = storageKey(accountEmail);
+    const list = await getDismissedList(accountEmail);
     const normalized = email.toLowerCase();
 
     //Update existing entry or add new one
@@ -70,9 +70,9 @@ export async function addToDismissed(provider: Provider, email: string, action: 
 }
 
 // Add multiple senders at once (used by batch action)
-export async function addMultipleToDismissed(provider: Provider, entries: { email: string; action: "kept" | "unsubscribed" }[]): Promise<void> {             
-    const key = storageKey(provider);                                                                                                                        
-    const list = await getDismissedList(provider);                                                                                                           
+export async function addMultipleToDismissed(accountEmail: string, entries: { email: string; action: "kept" | "unsubscribed" }[]): Promise<void> {
+    const key = storageKey(accountEmail);
+    const list = await getDismissedList(accountEmail);                                                                                                           
     const now = Date.now();                                                                                                                                  
                 
     for (const { email, action } of entries) {                                                                                                               
@@ -93,9 +93,9 @@ export async function addMultipleToDismissed(provider: Provider, entries: { emai
 }
 
 // Remove a single sender from the dismissed list
-export async function removeFromDismissed(provider: Provider, email: string): Promise<void> {
-    const key = storageKey(provider);
-    const list = await getDismissedList(provider);
+export async function removeFromDismissed(accountEmail: string, email: string): Promise<void> {
+    const key = storageKey(accountEmail);
+    const list = await getDismissedList(accountEmail);
     const filtered = list.filter((e) => e.email !== email.toLowerCase());                                                                                    
 
     return new Promise((resolve) => {                                                                                                                        
@@ -103,9 +103,9 @@ export async function removeFromDismissed(provider: Provider, email: string): Pr
     });
 }                                                                                                                                                            
 
-// Clear the entire dismissed list for a provider                                                                                                            
-export function clearDismissed(provider: Provider): Promise<void> {
-    const key = storageKey(provider);                                                                                                                        
+// Clear the entire dismissed list for an account
+export function clearDismissed(accountEmail: string): Promise<void> {
+    const key = storageKey(accountEmail);                                                                                                                        
     return new Promise((resolve) => {
         chrome.storage.local.remove(key, resolve);                                                                                                           
     });         

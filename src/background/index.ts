@@ -3,6 +3,18 @@ import { outlookSignIn, getOutlookUserEmail } from "../logic/outlook-auth";
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // One-click unsubscribe POST — works for both Gmail and Outlook senders
     if (message.type === "ONE_CLICK_UNSUBSCRIBE") {
+        // Validate the URL is HTTPS only — prevents SSRF via crafted email headers
+        try {
+            const url = new URL(message.url);
+            if (url.protocol !== "https:") {
+                sendResponse({ success: false, error: "Only HTTPS URLs are allowed" });
+                return true;
+            }
+        } catch {
+            sendResponse({ success: false, error: "Invalid URL" });
+            return true;
+        }
+
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
 

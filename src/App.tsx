@@ -260,7 +260,7 @@ function App() {
         setSelected(new Set());
         try {
             // Load the dismissed list once — used to filter both early and final results
-            const dismissedSet = await getActiveDismissedEmails(activeProvider!);
+            const dismissedSet = await getActiveDismissedEmails(activeEmail!);
             const filterDismissed = (list: SenderInfo[]) =>
                 list.filter((s) => !dismissedSet.has(s.email.toLowerCase()));
 
@@ -303,7 +303,7 @@ function App() {
 
     const handleSwipeLeft = (sender: SenderInfo) => {
         removeSender(sender.email);
-        if (activeProvider) addToDismissed(activeProvider, sender.email, "unsubscribed");
+        if (activeEmail) addToDismissed(activeEmail, sender.email, "unsubscribed");
         const token = getActiveToken();
 
         if (swipeMode === "unsubscribe" || swipeMode === "unsubscribe-trash") {
@@ -336,7 +336,7 @@ function App() {
 
     const handleSwipeRight = (sender: SenderInfo) => {
         removeSender(sender.email);
-        if (activeProvider) addToDismissed(activeProvider, sender.email, "kept");
+        if (activeEmail) addToDismissed(activeEmail, sender.email, "kept");
         setToast(`Kept ${sender.name}`);
     };
 
@@ -385,9 +385,9 @@ function App() {
         }
 
         // Mark all processed senders as dismissed
-        if (activeProvider) {
+        if (activeEmail) {
             await addMultipleToDismissed(
-                activeProvider,
+                activeEmail,
                 toProcess.map((s) => ({ email: s.email, action: "unsubscribed" as const }))
             );
         }
@@ -449,8 +449,8 @@ function App() {
     return (
         <div className="w-80 p-4 bg-white relative min-h-[400px]">
             {showInfo && <InfoPanel onClose={() => setShowInfo(false)} />}
-            {showDismissed && activeProvider && (
-                <DismissedPanel provider={activeProvider} onClose={() => setShowDismissed(false)} />
+            {showDismissed && activeEmail && (
+                <DismissedPanel accountEmail={activeEmail} onClose={() => setShowDismissed(false)} />
             )}
 
             <div>
@@ -460,10 +460,14 @@ function App() {
                     <div className="flex items-center gap-1">
                         <button
                             onClick={() => setShowDismissed(true)}
-                            className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold hover:bg-violet-100 hover:text-violet-600 flex items-center justify-center transition-colors"
+                            className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-600 flex items-center justify-center transition-colors"
                             title="Dismissed senders"
                         >
-                            D
+                            {/* Archive box icon */}
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                <path d="M2 3a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H2Z" />
+                                <path fillRule="evenodd" d="M2 7.5h16l-.811 7.71a2 2 0 0 1-1.99 1.79H4.802a2 2 0 0 1-1.99-1.79L2 7.5ZM7 11a1 1 0 0 1 1-1h4a1 1 0 1 1 0 2H8a1 1 0 0 1-1-1Z" clipRule="evenodd" />
+                            </svg>
                         </button>
                         <button
                             onClick={() => setShowInfo(true)}
@@ -471,6 +475,20 @@ function App() {
                         >
                             ?
                         </button>
+                        {/* Rescan — only shows when senders are loaded so it doesn't
+                            duplicate the main scan button on the empty state */}
+                        {senders.length > 0 && !scanning && (
+                            <button
+                                onClick={handleScan}
+                                className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-600 flex items-center justify-center transition-colors"
+                                title="Rescan inbox"
+                            >
+                                {/* Refresh/rescan icon */}
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                    <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.451a.75.75 0 0 0 0-1.5H4.5a.75.75 0 0 0-.75.75v3.75a.75.75 0 0 0 1.5 0v-2.033l.364.363a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm-10.624-2.85a5.5 5.5 0 0 1 9.201-2.465l.312.31H11.75a.75.75 0 0 0 0 1.5h3.75a.75.75 0 0 0 .75-.75V3.42a.75.75 0 0 0-1.5 0v2.033l-.364-.364A7 7 0 0 0 3.239 8.227a.75.75 0 0 0 1.449.39Z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                        )}
                         <button
                             onClick={handleLogout}
                             className="text-xs text-gray-400 hover:text-red-400 px-1 transition-colors"
@@ -596,7 +614,7 @@ function App() {
                     </div>
                 ) : (
                     <div>
-                        {/* View toggle + rescan + mode selector */}
+                        {/* View toggle + mode selector */}
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-1">
                                 <button
@@ -618,13 +636,6 @@ function App() {
                                     }`}
                                 >
                                     List
-                                </button>
-                                <button
-                                    onClick={handleScan}
-                                    className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-600 transition-colors"
-                                    title="Rescan inbox"
-                                >
-                                    Rescan
                                 </button>
                             </div>
                             <select

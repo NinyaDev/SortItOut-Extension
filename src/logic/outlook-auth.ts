@@ -8,6 +8,8 @@ const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 export async function outlookSignIn(): Promise<{ accessToken: string; refreshToken: string }> {
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = await generateCodeChallenge(codeVerifier);
+    // Random state token to prevent CSRF attacks during the OAuth flow
+    const state = generateCodeVerifier();
 
     const authUrl = new URL(AUTH_URL);
     authUrl.searchParams.set("client_id", CLIENT_ID);
@@ -17,12 +19,20 @@ export async function outlookSignIn(): Promise<{ accessToken: string; refreshTok
     authUrl.searchParams.set("code_challenge", codeChallenge);
     authUrl.searchParams.set("code_challenge_method", "S256");
     authUrl.searchParams.set("prompt", "select_account");
+    authUrl.searchParams.set("state", state);
 
     const responseUrl = await chrome.identity.launchWebAuthFlow({ url: authUrl.toString(), interactive: true });
 
     if (!responseUrl) throw new Error("Auth flow cancelled");
 
-    const code = new URL(responseUrl).searchParams.get("code");
+    const response = new URL(responseUrl);
+
+    // Validate state matches to prevent CSRF
+    if (response.searchParams.get("state") !== state) {
+        throw new Error("State mismatch — possible CSRF attack");
+    }
+
+    const code = response.searchParams.get("code");
     if (!code) throw new Error("No code returned");
 
     const tokenResponse = await fetch(TOKEN_URL, {

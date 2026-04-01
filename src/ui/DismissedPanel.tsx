@@ -10,32 +10,32 @@ import {
 } from "../logic/dismissed";
 
 interface DismissedPanelProps {
-    provider: "gmail" | "outlook";
+    accountEmail: string;
     onClose: () => void;
 }
 
-function DismissedPanel({ provider, onClose }: DismissedPanelProps) {
+function DismissedPanel({ accountEmail, onClose }: DismissedPanelProps) {
     const [entries, setEntries] = useState<DismissedEntry[]>([]);
     const [cooldown, setCooldown] = useState<CooldownSetting>("1week");
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        Promise.all([getDismissedList(provider), getCooldownSetting()]).then(
+        Promise.all([getDismissedList(accountEmail), getCooldownSetting()]).then(
             ([list, setting]) => {
                 setEntries(list);
                 setCooldown(setting);
                 setLoading(false);
             }
         );
-    }, [provider]);
+    }, [accountEmail]);
 
     const handleRemove = (email: string) => {
-        removeFromDismissed(provider, email);
+        removeFromDismissed(accountEmail, email);
         setEntries((prev) => prev.filter((e) => e.email !== email));
     };
 
     const handleClearAll = () => {
-        clearDismissed(provider);
+        clearDismissed(accountEmail);
         setEntries([]);
     };
 
@@ -58,7 +58,7 @@ function DismissedPanel({ provider, onClose }: DismissedPanelProps) {
     };
 
     return (
-        <div className="absolute inset-0 bg-white z-20 p-4 overflow-y-auto rounded-lg">
+        <div className="absolute inset-0 bg-white z-20 p-4 overflow-y-auto overscroll-contain rounded-lg">
             <div className="flex justify-between items-center mb-3">
                 <h2 className="text-lg font-bold text-gray-800">Dismissed</h2>
                 <button
@@ -70,7 +70,7 @@ function DismissedPanel({ provider, onClose }: DismissedPanelProps) {
             </div>
 
             <p className="text-xs text-gray-400 mb-3">
-                {provider === "outlook" ? "Outlook" : "Gmail"} senders you've already reviewed
+                Senders you've already reviewed for {accountEmail}
             </p>
 
             {/* Cooldown setting */}

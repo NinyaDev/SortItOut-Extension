@@ -100,9 +100,10 @@ export async function getSenderMessageIds(token: string, senderEmail: string): P
     const ids: string[] = [];
     let nextLink: string | undefined;
     let pages = 0;
+    const safeEmail = senderEmail.replace(/'/g, "''");
 
     const initialUrl = new URL(`${GRAPH_BASE}/messages`);
-    initialUrl.searchParams.set("$filter", `from/emailAddress/address eq '${senderEmail}'`);
+    initialUrl.searchParams.set("$filter", `from/emailAddress/address eq '${safeEmail}'`);
     initialUrl.searchParams.set("$select", "id");
     initialUrl.searchParams.set("$top", "100");
 
@@ -130,9 +131,10 @@ export async function countSenderMessages(token: string, senderEmail: string): P
     let count = 0;
     let nextLink: string | undefined;
     let pages = 0;
+    const safeEmail = senderEmail.replace(/'/g, "''");
 
     const initialUrl = new URL(`${GRAPH_BASE}/messages`);
-    initialUrl.searchParams.set("$filter", `from/emailAddress/address eq '${senderEmail}'`);
+    initialUrl.searchParams.set("$filter", `from/emailAddress/address eq '${safeEmail}'`);
     initialUrl.searchParams.set("$select", "id");
     initialUrl.searchParams.set("$top", "100");
 
@@ -159,9 +161,10 @@ export async function countUnreadFromSender(token: string, senderEmail: string):
     let count = 0;
     let nextLink: string | undefined;
     let pages = 0;
+    const safeEmail = senderEmail.replace(/'/g, "''");
 
     const initialUrl = new URL(`${GRAPH_BASE}/messages`);
-    initialUrl.searchParams.set("$filter", `from/emailAddress/address eq '${senderEmail}' and isRead eq false`);
+    initialUrl.searchParams.set("$filter", `from/emailAddress/address eq '${safeEmail}' and isRead eq false`);
     initialUrl.searchParams.set("$select", "id");
     initialUrl.searchParams.set("$top", "100");
 

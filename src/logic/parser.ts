@@ -20,7 +20,8 @@ export function parseUnsubscribe(unsubHeader: string | null, unsubPostHeader: st
     };
     if (!unsubHeader) return info;
 
-    const httpMatch = unsubHeader.match(/<(https?:\/\/[^>]+)>/);
+    // Only accept HTTPS URLs — prevents MITM attacks and SSRF via http:// links
+    const httpMatch = unsubHeader.match(/<(https:\/\/[^>]+)>/);
     if (httpMatch) info.httpUrl = httpMatch[1];
 
     const mailtoMatch = unsubHeader.match(/<mailto:([^>]+)>/);
