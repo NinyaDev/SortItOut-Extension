@@ -47,6 +47,10 @@ function InfoPanel({ onClose }: InfoPanelProps) {
 }
 
 function GuideTab() {
+    const [expanded, setExpanded] = useState<string | null>(null);
+
+    const toggle = (key: string) => setExpanded((prev) => (prev === key ? null : key));
+
     return (
         <div className="space-y-5">
             {/* Swipe intro — the core mechanic explained in one line */}
@@ -60,23 +64,54 @@ function GuideTab() {
 
             <div className="h-px bg-gray-100" />
 
-            {/* Unsubscribe methods — three inline chips instead of stacked cards */}
+            {/* Unsubscribe methods — expandable cards, one open at a time */}
             <div>
-                <p className="text-xs text-gray-400 mb-2">Unsubscribe methods</p>
-                <div className="flex gap-2">
-                    <div className="flex-1 text-center bg-emerald-50 rounded-lg py-2.5 px-2">
-                        <p className="text-xs font-semibold text-emerald-700">One-click</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">Automatic</p>
-                    </div>
-                    <div className="flex-1 text-center bg-amber-50 rounded-lg py-2.5 px-2">
-                        <p className="text-xs font-semibold text-amber-700">Link</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">Opens a tab</p>
-                    </div>
-                    <div className="flex-1 text-center bg-gray-50 rounded-lg py-2.5 px-2">
-                        <p className="text-xs font-semibold text-gray-500">Manual</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">Email them</p>
-                    </div>
+                <p className="text-xs text-gray-400 mb-2">What happens when you unsubscribe</p>
+                <div className="space-y-2">
+                    <button
+                        onClick={() => toggle("oneclick")}
+                        className={`w-full text-left rounded-lg p-2.5 transition-colors ${
+                            expanded === "oneclick" ? "bg-emerald-50" : "bg-gray-50 hover:bg-emerald-50/50"
+                        }`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-emerald-700">One-click</p>
+                            <span className="text-gray-400 text-[10px]">{expanded === "oneclick" ? "−" : "+"}</span>
+                        </div>
+                        {expanded === "oneclick" && (
+                            <p className="text-[10px] text-gray-500 mt-1.5">We handle it for you. A request is sent to the sender's server and you're unsubscribed instantly. Nothing else to do.</p>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => toggle("link")}
+                        className={`w-full text-left rounded-lg p-2.5 transition-colors ${
+                            expanded === "link" ? "bg-amber-50" : "bg-gray-50 hover:bg-amber-50/50"
+                        }`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-amber-700">Link</p>
+                            <span className="text-gray-400 text-[10px]">{expanded === "link" ? "−" : "+"}</span>
+                        </div>
+                        {expanded === "link" && (
+                            <p className="text-[10px] text-gray-500 mt-1.5">We open the sender's unsubscribe page in a new tab. You'll need to confirm on their site. Once you do, hit "Did it?" back in the extension.</p>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => toggle("manual")}
+                        className={`w-full text-left rounded-lg p-2.5 transition-colors ${
+                            expanded === "manual" ? "bg-gray-100" : "bg-gray-50 hover:bg-gray-100/50"
+                        }`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-gray-500">Manual</p>
+                            <span className="text-gray-400 text-[10px]">{expanded === "manual" ? "−" : "+"}</span>
+                        </div>
+                        {expanded === "manual" && (
+                            <p className="text-[10px] text-gray-500 mt-1.5">Some senders don't offer an unsubscribe link at all. For these, you'll need to go to their site or email them directly. Not ideal, but it's on them.</p>
+                        )}
+                    </button>
                 </div>
+                <p className="text-[10px] text-gray-400 mt-2">Each sender's card shows which method is available — look for the green, amber, or gray badge.</p>
             </div>
 
             <div className="h-px bg-gray-100" />

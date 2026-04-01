@@ -40,6 +40,8 @@ function App() {
     const [processing, setProcessing] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const [showDismissed, setShowDismissed] = useState(false);
+    const [hasScanned, setHasScanned] = useState(false);
+    const [allDismissed, setAllDismissed] = useState(false);
 
     // Helper: validate cached sender data before loading
     const isValidSenderCache = (data: unknown): data is SenderInfo[] => {
@@ -83,14 +85,20 @@ function App() {
         .then((data) => data?.emailAddress ?? null);
     };
 
-    // On mount: check for cached tokens and restore last active provider
+    // On mount: check for cached tokens, restore last active provider, and restore results
     useEffect(() => {
         chrome.storage.local.get(
-            ["outlookToken", "outlookRefreshToken", "outlookEmail", "lastProvider", "gmailSenders", "outlookSenders"],
+            ["outlookToken", "outlookRefreshToken", "outlookEmail", "lastProvider", "gmailSenders", "outlookSenders", "lastResults"],
             (stored) => {
                 const lastProvider = stored.lastProvider as Provider | undefined;
                 let hasGmail = false;
                 let hasOutlook = false;
+
+                // Restore results from previous session so they survive popup close
+                if (Array.isArray(stored.lastResults) && stored.lastResults.length > 0) {
+                    setResults(stored.lastResults as UnsubscribeResult[]);
+                    setHasScanned(true);
+                }
 
                 if (stored.outlookToken && stored.outlookEmail) {
                     setOutlookToken(stored.outlookToken as string);
@@ -113,6 +121,7 @@ function App() {
                                     const cacheKey = providerToUse === "outlook" ? "outlookSenders" : "gmailSenders";
                                     if (isValidSenderCache(stored[cacheKey])) {
                                         setSenders(stored[cacheKey] as SenderInfo[]);
+                                        setHasScanned(true);
                                     }
                                 }
                             }
@@ -122,6 +131,7 @@ function App() {
                                 setActiveProvider("outlook");
                                 if (isValidSenderCache(stored.outlookSenders)) {
                                     setSenders(stored.outlookSenders as SenderInfo[]);
+                                    setHasScanned(true);
                                 }
                             }
                             setLoading(false);
@@ -131,6 +141,7 @@ function App() {
                             setActiveProvider("outlook");
                             if (isValidSenderCache(stored.outlookSenders)) {
                                 setSenders(stored.outlookSenders as SenderInfo[]);
+                                setHasScanned(true);
                             }
                         }
                         setLoading(false);
@@ -146,6 +157,15 @@ function App() {
             return () => clearTimeout(timer);
         }
     }, [toast]);
+
+    // Persist results to storage so they survive popup close/reopen
+    useEffect(() => {
+        if (results.length > 0) {
+            chrome.storage.local.set({ lastResults: results });
+        } else {
+            chrome.storage.local.remove("lastResults");
+        }
+    }, [results]);
 
     useEffect(() => {
         const count = results.filter((r) => r.success).length;
@@ -221,6 +241,7 @@ function App() {
         chrome.storage.local.get(key, (data) => {
             if (isValidSenderCache(data[key])) {
                 setSenders(data[key] as SenderInfo[]);
+                setHasScanned(true);
             }
         });
     };
@@ -258,32 +279,39 @@ function App() {
         setError(null);
         setResults([]);
         setSelected(new Set());
+        setAllDismissed(false);
         try {
             // Load the dismissed list once — used to filter both early and final results
             const dismissedSet = await getActiveDismissedEmails(activeEmail!);
             const filterDismissed = (list: SenderInfo[]) =>
                 list.filter((s) => !dismissedSet.has(s.email.toLowerCase()));
 
+            let unfilteredCount = 0;
+
             if (activeProvider === "outlook") {
-                // Progressive loading: show senders as soon as Phase 1 finishes
-                // (with sample counts), then silently update with accurate counts
-                // when Phase 2 completes. This cuts perceived wait from ~50s to ~3-5s.
                 const finalResults = await scanOutlookEmails(token, (phase1Senders) => {
                     const filtered = filterDismissed(phase1Senders);
                     setSenders(filtered);
-                    setScanning(false); // Stop skeleton, show results immediately
+                    setScanning(false);
                 });
 
-                // Phase 2 done — update with enriched counts
+                unfilteredCount = finalResults.length;
                 const filtered = filterDismissed(finalResults);
                 setSenders(filtered);
                 cacheSendersFor("outlook", filtered);
             } else {
-                // Gmail is already fast (~5s), no progressive loading needed
                 const scanResults = await scanEmails(token);
+                unfilteredCount = scanResults.length;
                 const filtered = filterDismissed(scanResults);
                 setSenders(filtered);
                 cacheSendersFor("gmail", filtered);
+            }
+
+            setHasScanned(true);
+
+            // All senders were found but filtered out by dismissed list
+            if (unfilteredCount > 0 && senders.length === 0) {
+                setAllDismissed(true);
             }
         } catch (err) {
             console.error("Scan Failed:", err);
@@ -421,25 +449,45 @@ function App() {
     // Sign-in screen
     if (!isSignedIn) {
         return (
-            <div className="w-80 p-6 bg-white text-center">
-                <h1 className="text-2xl font-bold text-gray-800 mb-1">SortItOut</h1>
-                <p className="text-sm text-gray-400 mb-8">Your inbox is a mess. Let's fix that.</p>
+            <div className="w-80 bg-white text-center">
+                {/* Hero section with violet gradient */}
+                <div className="bg-gradient-to-b from-violet-500 to-violet-600 px-6 pt-10 pb-8 rounded-b-3xl">
+                    <img
+                        src="icons/SortItOut_logo_128.png"
+                        alt="SortItOut"
+                        className="w-16 h-16 rounded-2xl mx-auto mb-4"
+                    />
+                    <h1 className="text-2xl font-bold text-white mb-1">SortItOut</h1>
+                    <p className="text-sm text-violet-200">Your inbox is a mess. Let's fix that.</p>
+                </div>
 
-                <div className="space-y-3">
+                {/* Sign-in buttons */}
+                <div className="px-6 pt-6 pb-6 space-y-3">
                     <button
                         onClick={handleSignInGoogle}
-                        className="w-full bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl hover:border-violet-300 hover:bg-gray-50 font-medium flex items-center justify-center gap-2 transition-colors"
+                        className="w-full bg-white border-2 border-gray-200 text-gray-700 py-3 px-4 rounded-xl hover:border-violet-400 hover:shadow-md font-medium flex items-center justify-center gap-3 transition-all"
                     >
-                        <span className="text-lg">G</span>
+                        <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1Z" />
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23Z" />
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A11.96 11.96 0 0 0 1 12c0 1.94.46 3.77 1.18 5.07l3.66-2.84V14.09Z" />
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53Z" />
+                        </svg>
                         Sign in with Google
                     </button>
                     <button
                         onClick={handleSignInOutlook}
-                        className="w-full bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl hover:border-violet-300 hover:bg-gray-50 font-medium flex items-center justify-center gap-2 transition-colors"
+                        className="w-full bg-white border-2 border-gray-200 text-gray-700 py-3 px-4 rounded-xl hover:border-violet-400 hover:shadow-md font-medium flex items-center justify-center gap-3 transition-all"
                     >
-                        <span className="text-lg">M</span>
+                        <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0">
+                            <path fill="#F25022" d="M1 1h10v10H1z" />
+                            <path fill="#00A4EF" d="M1 13h10v10H1z" />
+                            <path fill="#7FBA00" d="M13 1h10v10H13z" />
+                            <path fill="#FFB900" d="M13 13h10v10H13z" />
+                        </svg>
                         Sign in with Microsoft
                     </button>
+
                 </div>
             </div>
         );
@@ -562,21 +610,38 @@ function App() {
                 {/* Scan / Skeleton / Results */}
                 {senders.length === 0 && !scanning ? (
                     <div className="text-center py-6">
+                        {/* Results summary — shows after swiping through senders */}
                         {results.length > 0 && (
                             <div className="mb-4">
                                 <p className="text-sm font-semibold text-gray-700 mb-1">
                                     All done! {results.filter((r) => r.success).length} sorted out
                                 </p>
                                 <p className="text-xs text-gray-400 mb-3">Your inbox thanks you</p>
-                                <ul className="space-y-1 text-left max-h-40 overflow-y-auto">
+                                <ul className="space-y-1.5 text-left max-h-40 overflow-y-auto">
                                     {results.map((r) => (
-                                        <li key={r.email} className="text-xs flex justify-between items-center">
-                                            <div>
-                                                <span className={r.success ? "text-emerald-600" : "text-amber-500"}>
-                                                    {r.success ? "Gone!" : r.method === "link" ? "Tab opened" : "Manual"}
+                                        <li key={r.email} className="text-xs flex items-center gap-2">
+                                            {/* Status icon */}
+                                            {r.success ? (
+                                                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                                        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
+                                                    </svg>
                                                 </span>
-                                                <span className="text-gray-500">{" — "}{r.name}</span>
+                                            ) : (
+                                                <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-500 flex items-center justify-center flex-shrink-0">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                                        <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clipRule="evenodd" />
+                                                    </svg>
+                                                </span>
+                                            )}
+                                            {/* Sender name and method */}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-gray-700 truncate">{r.name}</p>
+                                                <p className={`text-[10px] ${r.success ? "text-emerald-600" : "text-amber-500"}`}>
+                                                    {r.success ? "Gone!" : r.method === "link" ? "Tab opened — confirm on their site" : "Manual — email them directly"}
+                                                </p>
                                             </div>
+                                            {/* Confirm button for link-based — checkmark to mark as done */}
                                             {r.method === "link" && !r.success && (
                                                 <button
                                                     onClick={() => {
@@ -586,9 +651,12 @@ function App() {
                                                             )
                                                         );
                                                     }}
-                                                    className="text-violet-500 hover:underline ml-2 whitespace-nowrap"
+                                                    className="w-6 h-6 rounded-full bg-violet-100 text-violet-500 hover:bg-violet-200 flex items-center justify-center flex-shrink-0 transition-colors"
+                                                    title="Mark as unsubscribed"
                                                 >
-                                                    Did it?
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                                        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
+                                                    </svg>
                                                 </button>
                                             )}
                                         </li>
@@ -596,11 +664,36 @@ function App() {
                                 </ul>
                             </div>
                         )}
+
+                        {/* Kept-only completion — user swiped right on everything */}
+                        {results.length === 0 && hasScanned && !allDismissed && (
+                            <div className="mb-4">
+                                <p className="text-sm font-semibold text-gray-700 mb-1">All reviewed!</p>
+                                <p className="text-xs text-gray-400 mb-3">You've gone through every sender</p>
+                            </div>
+                        )}
+
+                        {/* All dismissed — scan found senders but they're all in the dismissed list */}
+                        {allDismissed && (
+                            <div className="mb-4">
+                                <p className="text-sm font-semibold text-gray-700 mb-1">You're all caught up</p>
+                                <p className="text-xs text-gray-400 mb-3">
+                                    All senders found were already in your{" "}
+                                    <button
+                                        onClick={() => setShowDismissed(true)}
+                                        className="text-violet-500 hover:underline"
+                                    >
+                                        dismissed list
+                                    </button>
+                                </p>
+                            </div>
+                        )}
+
                         <button
                             onClick={handleScan}
                             className="w-full bg-violet-500 text-white py-3 px-4 rounded-xl hover:bg-violet-600 font-semibold transition-colors"
                         >
-                            {results.length > 0 ? "Look for more" : "First cleanup!"}
+                            {hasScanned ? "Scan again" : "First cleanup!"}
                         </button>
                     </div>
                 ) : scanning ? (

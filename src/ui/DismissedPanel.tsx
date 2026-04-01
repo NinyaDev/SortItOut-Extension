@@ -96,7 +96,7 @@ function DismissedPanel({ accountEmail, onClose }: DismissedPanelProps) {
                 <p className="text-sm text-gray-400 text-center py-6">No dismissed senders</p>
             ) : (
                 <>
-                    <ul className="space-y-2 max-h-56 overflow-y-auto mb-3">
+                    <ul className="space-y-2 max-h-40 overflow-y-auto mb-3">
                         {entries.map((entry) => (
                             <li
                                 key={entry.email}
