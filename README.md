@@ -125,33 +125,14 @@ The published `manifest.json` ships with the OAuth client IDs used by the live C
 ```
 .
 ├── public/
-│   ├── manifest.json          # MV3 manifest (permissions, OAuth, icons)
-│   └── icons/                 # Extension logos (16/48/128)
+│   └── manifest.json   # MV3 manifest (permissions, OAuth, icons)
 ├── src/
-│   ├── App.tsx                # Popup root: provider state, scan UI
-│   ├── main.tsx               # React entry point
-│   ├── index.css              # Tailwind + Inter font
-│   ├── background/
-│   │   └── index.ts           # Service worker: unsubscribe POST + Outlook auth
-│   ├── logic/
-│   │   ├── gmail.ts           # Gmail API calls
-│   │   ├── outlook.ts         # Microsoft Graph calls
-│   │   ├── outlook-auth.ts    # Outlook OAuth + PKCE
-│   │   ├── scanner.ts         # Gmail two-phase sender scan
-│   │   ├── outlook-scanner.ts # Outlook sender scan
-│   │   ├── parser.ts          # List-Unsubscribe header parsing
-│   │   ├── unsubscribe.ts     # One-click / link / mailto handler
-│   │   ├── dismissed.ts       # Dismissed-sender list + cooldowns
-│   │   └── types.ts           # Shared types
-│   └── ui/
-│       ├── SwipeableCard.tsx  # Motion-driven swipe gesture
-│       ├── AnimatedList.tsx   # List view
-│       ├── InfoPanel.tsx      # Help / privacy info
-│       ├── DismissedPanel.tsx # Manage dismissed senders
-│       └── SenderSkeleton.tsx # Loading state
-├── popup.html                 # Extension popup entry HTML
-├── vite.config.ts             # Vite + extension build config
-└── PRIVACY.md                 # Privacy policy (also published at the GitHub Pages site)
+│   ├── App.tsx         # Popup root
+│   ├── background/     # Service worker: unsubscribe POST + Outlook auth
+│   ├── logic/          # Gmail / Outlook API calls, scanners, parser, dismissed list
+│   └── ui/             # Swipeable card, list view, info / dismissed panels
+├── popup.html
+└── vite.config.ts
 ```
 
 ---
