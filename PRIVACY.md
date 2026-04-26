@@ -1,3 +1,8 @@
+---
+layout: default
+title: Privacy Policy
+---
+
 # Privacy Policy — SortItOut
 
 **Last updated:** April 1, 2026
