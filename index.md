@@ -9,7 +9,7 @@ A Chrome extension that helps you clean up your inbox by surfacing newsletter an
 
 ## Features
 
-- **Local-only** — no backend, no analytics, no tracking
+- **Local-only** - no backend, no analytics, no tracking
 - Works with **Gmail** and **Outlook**
 - One-click unsubscribe via the standard `List-Unsubscribe` header
 - Swipe-to-trash for senders you no longer want to hear from
