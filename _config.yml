@@ -1,2 +1,19 @@
 title: SortItOut
 description: Sort out newsletters, promotions and emails you don't care about in simple swipes. Everything stays on your device.
+
+# Only publish the landing page, privacy policy, and the icons referenced by the layout.
+# Everything else (source code, build configs, screenshots) is excluded from the public site.
+include:
+  - public/icons
+
+exclude:
+  - src
+  - assets
+  - node_modules
+  - package.json
+  - package-lock.json
+  - tsconfig.json
+  - vite.config.ts
+  - popup.html
+  - PRIVACY-template.md
+  - README.md
