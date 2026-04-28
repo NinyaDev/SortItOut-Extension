@@ -119,7 +119,7 @@ function DismissedPanel({ accountEmail, onClose }: DismissedPanelProps) {
                                         </span>
                                         {entry.action === "kept" && cooldown !== "never" && (
                                             <span className="text-xs text-gray-400">
-                                                — returns in {cooldownLabel[cooldown]}
+                                                returns in {cooldownLabel[cooldown]}
                                             </span>
                                         )}
                                     </div>

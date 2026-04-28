@@ -18,7 +18,7 @@ type ViewMode = "card" | "list";
 type Provider = "gmail" | "outlook";
 
 function App() {
-    // Auth state — separate per provider so both can be signed in simultaneously
+    // Auth state - separate per provider so both can be signed in simultaneously
     const [gmailToken, setGmailToken] = useState<string | null>(null);
     const [gmailEmail, setGmailEmail] = useState<string | null>(null);
     const [outlookToken, setOutlookToken] = useState<string | null>(null);
@@ -28,7 +28,7 @@ function App() {
     const [activeProvider, setActiveProvider] = useState<Provider | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // Shared UI state — applies to whichever provider is active
+    // Shared UI state - applies to whichever provider is active
     const [senders, setSenders] = useState<SenderInfo[]>([]);
     const [scanning, setScanning] = useState(false);
     const [results, setResults] = useState<UnsubscribeResult[]>([]);
@@ -59,7 +59,7 @@ function App() {
     const getIdsFn = () => activeProvider === "outlook" ? outlookGetIds : gmailGetIds;
     const getActiveToken = () => activeProvider === "outlook" ? outlookToken : gmailToken;
 
-    // Cache helpers — take explicit provider to avoid state timing issues
+    // Cache helpers - take explicit provider to avoid state timing issues
     const cacheSendersFor = (provider: Provider, list: SenderInfo[]) => {
         const key = provider === "outlook" ? "outlookSenders" : "gmailSenders";
         const forCache = list.map(({ messageIds, ...rest }) => ({ ...rest, messageIds: [] }));
@@ -212,7 +212,7 @@ function App() {
         chrome.runtime.sendMessage({ type: "OUTLOOK_SIGN_IN" }, (response) => {
             if (!response?.success) return;
 
-            // Auth succeeded — grab the token from storage and update UI
+            // Auth succeeded - grab the token from storage and update UI
             chrome.storage.local.get(["outlookToken"], (stored) => {
                 if (!stored.outlookToken) return;
                 setOutlookToken(stored.outlookToken as string);
@@ -281,7 +281,7 @@ function App() {
         setSelected(new Set());
         setAllDismissed(false);
         try {
-            // Load the dismissed list once — used to filter both early and final results
+            // Load the dismissed list once - used to filter both early and final results
             const dismissedSet = await getActiveDismissedEmails(activeEmail!);
             const filterDismissed = (list: SenderInfo[]) =>
                 list.filter((s) => !dismissedSet.has(s.email.toLowerCase()));
@@ -523,7 +523,7 @@ function App() {
                         >
                             ?
                         </button>
-                        {/* Rescan — only shows when senders are loaded so it doesn't
+                        {/* Rescan - only shows when senders are loaded so it doesn't
                             duplicate the main scan button on the empty state */}
                         {senders.length > 0 && !scanning && (
                             <button
@@ -610,7 +610,7 @@ function App() {
                 {/* Scan / Skeleton / Results */}
                 {senders.length === 0 && !scanning ? (
                     <div className="text-center py-6">
-                        {/* Results summary — shows after swiping through senders */}
+                        {/* Results summary - shows after swiping through senders */}
                         {results.length > 0 && (
                             <div className="mb-4">
                                 <p className="text-sm font-semibold text-gray-700 mb-1">
@@ -638,10 +638,10 @@ function App() {
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-gray-700 truncate">{r.name}</p>
                                                 <p className={`text-[10px] ${r.success ? "text-emerald-600" : "text-amber-500"}`}>
-                                                    {r.success ? "Gone!" : r.method === "link" ? "Tab opened — confirm on their site" : "Manual — email them directly"}
+                                                    {r.success ? "Gone!" : r.method === "link" ? "Tab opened, confirm on their site" : "Manual: email them directly"}
                                                 </p>
                                             </div>
-                                            {/* Confirm button for link-based — checkmark to mark as done */}
+                                            {/* Confirm button for link-based - checkmark to mark as done */}
                                             {r.method === "link" && !r.success && (
                                                 <button
                                                     onClick={() => {
@@ -665,7 +665,7 @@ function App() {
                             </div>
                         )}
 
-                        {/* Kept-only completion — user swiped right on everything */}
+                        {/* Kept-only completion - user swiped right on everything */}
                         {results.length === 0 && hasScanned && !allDismissed && (
                             <div className="mb-4">
                                 <p className="text-sm font-semibold text-gray-700 mb-1">All reviewed!</p>
@@ -673,7 +673,7 @@ function App() {
                             </div>
                         )}
 
-                        {/* All dismissed — scan found senders but they're all in the dismissed list */}
+                        {/* All dismissed - scan found senders but they're all in the dismissed list */}
                         {allDismissed && (
                             <div className="mb-4">
                                 <p className="text-sm font-semibold text-gray-700 mb-1">You're all caught up</p>

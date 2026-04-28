@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "SortItOut",
-    "version": "1.0",
+    "version": "1.0.1",
     "description": "Sort out newsletters, promotions and emails you don't care about in simple swipes. Everything locally on your device!",
     "permissions": ["identity","storage"],
     "host_permissions": ["https://www.gmail.googleapis.com/*", "https://gmail.googleapis.com/*", "https://graph.microsoft.com/*", "https://login.microsoftonline.com/*", "https://*/*"],

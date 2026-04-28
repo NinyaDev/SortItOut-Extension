@@ -19,7 +19,7 @@ async function processInChunks<T>(items: string[], fn: (item: string) => Promise
 // Phase 2: Enrich each sender with accurate total counts and open rates (IDs fetched on-demand when trashing).
 // The results are sorted by the best unsubscribe method and then by the count of emails.
 export async function scanEmails(token: string): Promise<SenderInfo[]> {
-    // Phase 1: Quick scan — get 200 recent emails with "unsubscribe"
+    // Phase 1: Quick scan - get 200 recent emails with "unsubscribe"
     const ids = await listMessageIds(token);
 
     const messageResults = await processInChunks(ids, (id) =>
@@ -54,8 +54,8 @@ export async function scanEmails(token: string): Promise<SenderInfo[]> {
         }
     }
 
-    // Phase 2: Enrich — get accurate total counts and open rates per sender.
-    // We DON'T fetch all IDs here — just counts. IDs are fetched on-demand when trashing.
+    // Phase 2: Enrich - get accurate total counts and open rates per sender.
+    // We DON'T fetch all IDs here - just counts. IDs are fetched on-demand when trashing.
     // Open rate = (total - unread) / total, calculated across ALL emails from that sender.
     const senderEmails = Array.from(senderMap.keys());
 

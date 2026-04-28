@@ -20,7 +20,7 @@ export function parseUnsubscribe(unsubHeader: string | null, unsubPostHeader: st
     };
     if (!unsubHeader) return info;
 
-    // Only accept HTTPS URLs — prevents MITM attacks and SSRF via http:// links
+    // Only accept HTTPS URLs - prevents MITM attacks and SSRF via http:// links
     const httpMatch = unsubHeader.match(/<(https:\/\/[^>]+)>/);
     if (httpMatch) info.httpUrl = httpMatch[1];
 

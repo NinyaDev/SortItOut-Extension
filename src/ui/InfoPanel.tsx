@@ -53,7 +53,7 @@ function GuideTab() {
 
     return (
         <div className="space-y-5">
-            {/* Swipe intro — the core mechanic explained in one line */}
+            {/* Swipe intro - the core mechanic explained in one line */}
             <div>
                 <p className="text-sm text-gray-700">
                     Swipe <span className="text-red-400 font-semibold">left to unsubscribe</span>,{" "}
@@ -64,7 +64,7 @@ function GuideTab() {
 
             <div className="h-px bg-gray-100" />
 
-            {/* Unsubscribe methods — expandable cards, one open at a time */}
+            {/* Unsubscribe methods - expandable cards, one open at a time */}
             <div>
                 <p className="text-xs text-gray-400 mb-2">What happens when you unsubscribe</p>
                 <div className="space-y-2">
@@ -111,12 +111,12 @@ function GuideTab() {
                         )}
                     </button>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-2">Each sender's card shows which method is available — look for the green, amber, or gray badge.</p>
+                <p className="text-[10px] text-gray-400 mt-2">Each sender's card shows which method is available. Look for the green, amber, or gray badge.</p>
             </div>
 
             <div className="h-px bg-gray-100" />
 
-            {/* Swipe modes — compact grid */}
+            {/* Swipe modes - compact grid */}
             <div>
                 <p className="text-xs text-gray-400 mb-2">Swipe left modes</p>
                 <div className="space-y-1.5 text-xs">
@@ -140,7 +140,7 @@ function GuideTab() {
 
             <div className="h-px bg-gray-100" />
 
-            {/* Toolbar icons — explain what each header button does */}
+            {/* Toolbar icons - explain what each header button does */}
             <div>
                 <p className="text-xs text-gray-400 mb-2">Toolbar</p>
                 <div className="space-y-2 text-xs">
@@ -153,7 +153,7 @@ function GuideTab() {
                         </div>
                         <div>
                             <span className="text-gray-700 font-medium">Dismissed list</span>
-                            <span className="text-gray-400"> — senders you've already reviewed</span>
+                            <span className="text-gray-400">: senders you've already reviewed</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -164,7 +164,7 @@ function GuideTab() {
                         </div>
                         <div>
                             <span className="text-gray-700 font-medium">Rescan</span>
-                            <span className="text-gray-400"> — scan your 200 most recent emails</span>
+                            <span className="text-gray-400">: scan your 200 most recent emails</span>
                         </div>
                     </div>
                 </div>
@@ -172,7 +172,7 @@ function GuideTab() {
 
             <div className="h-px bg-gray-100" />
 
-            {/* Walkthrough — numbered steps, tight and minimal */}
+            {/* Walkthrough - numbered steps, tight and minimal */}
             <div>
                 <p className="text-xs text-gray-400 mb-2">Walkthrough</p>
                 <div className="space-y-2">
@@ -198,7 +198,7 @@ function GuideTab() {
 function PrivacyTab() {
     return (
         <div className="space-y-5">
-            {/* Hero statement — big and confident */}
+            {/* Hero statement - big and confident */}
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
                 <div className="flex justify-center mb-2">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-8 h-8 text-emerald-500">
@@ -211,7 +211,7 @@ function PrivacyTab() {
 
             <div className="h-px bg-gray-100" />
 
-            {/* What we access vs what we don't — two-column contrast */}
+            {/* What we access vs what we don't - two-column contrast */}
             <div>
                 <p className="text-xs text-gray-400 mb-2">What we access</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -232,7 +232,7 @@ function PrivacyTab() {
 
             <div className="h-px bg-gray-100" />
 
-            {/* Storage & auth — simple list */}
+            {/* Storage & auth - simple list */}
             <div>
                 <p className="text-xs text-gray-400 mb-2">Where data lives</p>
                 <div className="space-y-1.5 text-xs">

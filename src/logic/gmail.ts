@@ -1,5 +1,5 @@
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
-const MAX_IDS_PER_SENDER = 2000; // Cap per sender to prevent memory issues — user can rescan to get more
+const MAX_IDS_PER_SENDER = 2000; // Cap per sender to prevent memory issues - user can rescan to get more
 const MAX_PAGES = 20; // Safety limit on pagination loops to prevent infinite requests
 
 const HEADERS_TO_FETCH = [

@@ -186,7 +186,7 @@ export async function countUnreadFromSender(token: string, senderEmail: string):
     return count;
 }
 
-// Types for the generalized batch API — used by countSendersBatch and getMessageDataBatch
+// Types for the generalized batch API - used by countSendersBatch and getMessageDataBatch
 export interface BatchRequestItem {
     id: string;
     method: "GET" | "POST";
@@ -201,7 +201,7 @@ export interface BatchResponseItem {
     body: Record<string, unknown>;
 }
 
-// Generalized $batch function — sends up to 20 requests in a single HTTP call.
+// Generalized $batch function - sends up to 20 requests in a single HTTP call.
 // This is the same pattern as trashMessages below, but generalized for any request type.
 // Handles token refresh on 401 (which trashMessages doesn't).
 export async function batchRequest(token: string, requests: BatchRequestItem[]): Promise<BatchResponseItem[]> {
@@ -222,7 +222,7 @@ export async function batchRequest(token: string, requests: BatchRequestItem[]):
             body: JSON.stringify(batchBody),
         });
 
-        // Handle token refresh — if the outer batch request gets 401,
+        // Handle token refresh - if the outer batch request gets 401,
         // refresh the token and retry this chunk once
         if (res.status === 401) {
             const stored = await chrome.storage.local.get("outlookRefreshToken");
@@ -275,7 +275,7 @@ export async function listMessagesWithHeaders(token: string, maxResults: number 
 
     const initialUrl = new URL(`${GRAPH_BASE}/messages`);
     initialUrl.searchParams.set("$search", '"unsubscribe"');
-    // Request headers inline — MS Graph docs say internetMessageHeaders is
+    // Request headers inline - MS Graph docs say internetMessageHeaders is
     // "Returned only on applying a $select query option"
     initialUrl.searchParams.set("$select", "id,from,isRead,internetMessageHeaders");
     initialUrl.searchParams.set("$top", String(Math.min(50, maxResults)));
@@ -294,13 +294,13 @@ export async function listMessagesWithHeaders(token: string, maxResults: number 
             internetMessageHeaders?: { name: string; value: string }[];
         }> = data.value ?? [];
 
-        // Check if headers actually came back on the first page —
+        // Check if headers actually came back on the first page -
         // if $search doesn't support $select=internetMessageHeaders,
         // the array will be missing or empty on every message
         if (pages === 0 && messages.length > 0) {
             const firstHeaders = messages[0].internetMessageHeaders;
             if (!firstHeaders || firstHeaders.length === 0) {
-                throw new Error("Headers not returned in list response — use fallback");
+                throw new Error("Headers not returned in list response - use fallback");
             }
         }
 
@@ -334,7 +334,7 @@ export async function listMessagesWithHeaders(token: string, maxResults: number 
     return results.slice(0, maxResults);
 }
 
-// Batch-fetch individual message details — fallback for when listMessagesWithHeaders
+// Batch-fetch individual message details - fallback for when listMessagesWithHeaders
 // doesn't return headers (some $search + $select combinations fail).
 // Uses batchRequest to send up to 20 GETs per HTTP call instead of 4 individual requests.
 export async function getMessageDataBatch(token: string, messageIds: string[]): Promise<Map<string, OutlookMessageData>> {
@@ -379,12 +379,12 @@ export async function getMessageDataBatch(token: string, messageIds: string[]): 
 // Batch count queries for multiple senders at once using $count=true + $batch.
 // Instead of paginating through all messages per sender to count them (old approach),
 // each count is a single request that returns @odata.count directly.
-// We batch 20 of these per HTTP call — so 50 senders x 2 queries = 5 batch calls.
+// We batch 20 of these per HTTP call - so 50 senders x 2 queries = 5 batch calls.
 export async function countSendersBatch(
     token: string,
     senderEmails: string[]
 ): Promise<Map<string, { total: number; unread: number }>> {
-    // Build batch requests — 2 per sender (total + unread)
+    // Build batch requests - 2 per sender (total + unread)
     // Escape single quotes in email addresses to prevent OData injection
     const requests: BatchRequestItem[] = [];
     for (let i = 0; i < senderEmails.length; i++) {
@@ -437,7 +437,7 @@ export async function countSendersBatch(
     return results;
 }
 
-// Trash messages — moves to Deleted Items folder (recoverable)
+// Trash messages - moves to Deleted Items folder (recoverable)
 // Uses the move endpoint instead of DELETE, which would permanently remove messages
 export async function trashMessages(token: string, messageIds: string[]): Promise<void> {
     for (let i = 0; i < messageIds.length; i += 20) {

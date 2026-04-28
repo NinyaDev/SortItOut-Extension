@@ -29,7 +29,7 @@ export async function outlookSignIn(): Promise<{ accessToken: string; refreshTok
 
     // Validate state matches to prevent CSRF
     if (response.searchParams.get("state") !== state) {
-        throw new Error("State mismatch — possible CSRF attack");
+        throw new Error("State mismatch - possible CSRF attack");
     }
 
     const code = response.searchParams.get("code");
