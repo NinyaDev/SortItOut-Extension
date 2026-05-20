@@ -1,5 +1,7 @@
 const CLIENT_ID = "79e08a8e-3a9b-4de5-96d5-7ac2d8f4e382"
-const REDIRECT_URI = `https://${chrome.runtime.id}.chromiumapp.org/`
+// chrome.identity.getRedirectURL() returns the right host for the current browser:
+// chromiumapp.org on Chrome/Edge/Brave/Vivaldi, extensions.allizom.org on Firefox/Zen.
+const REDIRECT_URI = chrome.identity.getRedirectURL()
 const SCOPES = "openid User.Read Mail.Read Mail.ReadWrite"
 
 const AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
