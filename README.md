@@ -5,9 +5,9 @@
 <h1 align="center">SortItOut</h1>
 
 <p align="center">
-  A Chrome extension that helps you clean up your <b>Gmail</b> and <b>Outlook</b> inbox by surfacing the senders of newsletters and promotional emails, then letting you <b>unsubscribe or trash them with a swipe</b>.
+  A cross-browser extension that helps you clean up your <b>Gmail</b> and <b>Outlook</b> inbox by surfacing the senders of newsletters and promotional emails, then letting you <b>unsubscribe or trash them with a swipe</b>.
   <br>
-  Built with <b>React 19, TypeScript, Vite, Tailwind v4, and Manifest V3</b>.
+  Built with <b>React 19, TypeScript, Vite, Tailwind v4, and Manifest V3</b>. Runs on Chrome, Edge, Brave, Vivaldi, Firefox, and Zen.
   <br><br>
   Everything runs locally on your device. No backend, no analytics, no tracking.
 </p>
@@ -16,6 +16,8 @@
   <a href="https://chromewebstore.google.com/detail/sortitout/flffhjccncnnphgfkpjjjioebmdcnied">
     <img src="https://img.shields.io/badge/Install_from_Chrome_Web_Store-7c3aed?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Install from Chrome Web Store" height="40">
   </a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/Firefox_Add--ons-coming_soon-ff7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Firefox Add-ons coming soon" height="40">
 </p>
 
 ---
@@ -75,9 +77,12 @@
 - **Build:** Vite 7
 - **Styling:** Tailwind CSS v4
 - **Animations:** [`motion`](https://motion.dev) (formerly Framer Motion)
-- **Extension platform:** Chrome Manifest V3 (service worker + popup)
+- **Extension platform:** Manifest V3, cross-browser (Chromium service worker + Gecko background script fallback)
 - **APIs:** Gmail API (`gmail.modify`), Microsoft Graph (`Mail.ReadWrite`)
-- **Auth:** `chrome.identity.getAuthToken` for Gmail, `chrome.identity.launchWebAuthFlow` + PKCE for Outlook
+- **Auth:**
+  - Gmail on Chromium: `chrome.identity.getAuthToken` (Chrome Extension OAuth client)
+  - Gmail on Firefox/Zen: `chrome.identity.launchWebAuthFlow` + PKCE (Web Application OAuth client)
+  - Outlook on both: `chrome.identity.launchWebAuthFlow` + PKCE (Entra public client)
 
 ---
 
@@ -86,7 +91,7 @@
 ### 1. Prerequisites
 
 - [Node.js](https://nodejs.org/) 20+ and npm
-- A Chromium-based browser (Chrome, Edge, Brave, Arc)
+- A Chromium-based browser (Chrome, Edge, Brave, Vivaldi) **and/or** a Gecko-based browser (Firefox 121+, Zen)
 
 ### 2. Clone and install
 
@@ -104,19 +109,31 @@ npm run build
 
 This outputs the production bundle to `dist/`.
 
-### 4. Load it in Chrome
+### 4a. Load it in a Chromium browser (Chrome, Edge, Brave, Vivaldi)
 
-1. Go to `chrome://extensions`
+1. Go to `chrome://extensions` (or the equivalent in your browser)
 2. Toggle **Developer mode** on (top right)
 3. Click **Load unpacked** and select the `dist/` folder
 4. The SortItOut icon will appear in your toolbar
 
+The `key` field in `public/manifest.json` makes the unpacked build compute the same extension ID as the production CWS install, so the bundled OAuth client works out of the box. (Chrome Web Store strips the `key` field on submission and re-signs with its own key, so this is safe for both local dev and store distribution.)
+
+### 4b. Load it in a Gecko browser (Firefox 121+, Zen)
+
+1. Go to `about:debugging`
+2. Click **This Firefox** (Zen shows it as "This Zen", same thing)
+3. Click **Load Temporary Add-on** and pick `dist/manifest.json`
+4. The SortItOut icon will appear in your toolbar
+
+Note: temporary add-ons are removed when you close the browser. For persistent local testing, sign the extension with your own AMO developer account or wait for the published AMO listing.
+
 ### 5. Wire up your own OAuth clients (optional)
 
-The published `manifest.json` ships with the OAuth client IDs used by the live Chrome Web Store build. If you want to develop against your own Google or Microsoft tenants:
+The published `manifest.json` and source code ship with the OAuth client IDs used by the live store builds. If you want to develop against your own Google or Microsoft tenants:
 
-- **Gmail:** create an OAuth Client of type *Chrome Extension* in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), set its Application ID to your unpacked extension ID, and replace `client_id` in `public/manifest.json`.
-- **Outlook:** register a single-page app in the [Azure Portal](https://portal.azure.com), add `https://<extension-id>.chromiumapp.org/` as a redirect URI, and replace `CLIENT_ID` in `src/logic/outlook-auth.ts`.
+- **Gmail (Chromium):** create an OAuth Client of type *Chrome Extension* in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), set its Application ID to your unpacked extension ID, and replace `client_id` in `public/manifest.json` (`oauth2.client_id`).
+- **Gmail (Firefox/Zen):** create a separate OAuth Client of type *Web Application*, add `chrome.identity.getRedirectURL()` (an `https://<hash>.extensions.allizom.org/` URL — get it from the extension's background console) as an Authorized Redirect URI, and replace `CLIENT_ID` in `src/logic/gmail-auth.ts`. Google's Web Application client type requires a client secret even with PKCE; put it in a gitignored `.env.local` file as `VITE_FIREFOX_GOOGLE_CLIENT_SECRET=...` and Vite will inject it at build time.
+- **Outlook (both):** register a public client in the [Azure Portal](https://portal.azure.com), add both `https://<chrome-extension-id>.chromiumapp.org/` (for Chromium) and the Firefox `extensions.allizom.org` URI as redirect URIs, and replace `CLIENT_ID` in `src/logic/outlook-auth.ts`.
 
 ---
 
@@ -125,14 +142,17 @@ The published `manifest.json` ships with the OAuth client IDs used by the live C
 ```
 .
 ├── public/
-│   └── manifest.json   # MV3 manifest (permissions, OAuth, icons)
+│   └── manifest.json   # MV3 manifest (permissions, OAuth, icons, gecko id)
 ├── src/
-│   ├── App.tsx         # Popup root
-│   ├── background/     # Service worker: unsubscribe POST + Outlook auth
-│   ├── logic/          # Gmail / Outlook API calls, scanners, parser, dismissed list
+│   ├── App.tsx         # Popup root, branches on browser for Gmail auth
+│   ├── background/     # Service worker: unsubscribe POST + Outlook/Gmail PKCE
+│   ├── logic/          # Gmail / Outlook API calls, auth modules, scanners,
+│   │                   # parser, dismissed list
 │   └── ui/             # Swipeable card, list view, info / dismissed panels
 ├── popup.html
-└── vite.config.ts
+├── vite.config.ts
+└── .env.local          # gitignored. Holds VITE_FIREFOX_GOOGLE_CLIENT_SECRET
+                        # for the Firefox Gmail OAuth flow.
 ```
 
 ---
