@@ -9,20 +9,38 @@ const HEADERS_TO_FETCH = [
     "List-Unsubscribe-Post",
 ];
 
-// Wrapper that retries once on 401 by refreshing the token
+// Wrapper that retries once on 401 by refreshing the token.
+// Two refresh paths depending on which browser signed the user in:
+//  - Firefox/Zen: gmailRefreshToken was stored during the PKCE sign-in, use it to call Google's token endpoint.
+//  - Chrome: no refresh token stored, fall back to chrome.identity which caches Google credentials natively.
 async function gmailFetch(url: string, token: string): Promise<Response> {
     const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
     });
 
     if (res.status === 401) {
-        chrome.identity.removeCachedAuthToken({ token });
-        const newToken = await new Promise<string | null>((resolve) => {
-            chrome.identity.getAuthToken({ interactive: false }, (result) => {
-                const t = typeof result === "string" ? result : result?.token;
-                resolve(t ?? null);
+        const stored = await chrome.storage.local.get("gmailRefreshToken");
+        let newToken: string | null = null;
+
+        if (stored.gmailRefreshToken) {
+            // Firefox path: refresh via stored refresh token
+            const { refreshGmailToken } = await import("./gmail-auth");
+            const tokens = await refreshGmailToken(stored.gmailRefreshToken as string);
+            await chrome.storage.local.set({
+                gmailToken: tokens.accessToken,
+                gmailRefreshToken: tokens.refreshToken,
             });
-        });
+            newToken = tokens.accessToken;
+        } else if (typeof chrome.identity.getAuthToken === "function") {
+            // Chrome path: existing chrome.identity flow, unchanged
+            chrome.identity.removeCachedAuthToken({ token });
+            newToken = await new Promise<string | null>((resolve) => {
+                chrome.identity.getAuthToken({ interactive: false }, (result) => {
+                    const t = typeof result === "string" ? result : result?.token;
+                    resolve(t ?? null);
+                });
+            });
+        }
 
         if (!newToken) throw new Error("Token refresh failed");
 
