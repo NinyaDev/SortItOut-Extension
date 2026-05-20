@@ -9,3 +9,11 @@ dist/
 
 # macOS
 .DS_Store
+
+# Local environment / secrets - never commit
+.env
+.env.local
+.env.*.local
+
+# AMO reviewer build instructions - regenerated per submission, not part of repo
+BUILD.md
