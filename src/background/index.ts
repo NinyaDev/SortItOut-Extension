@@ -1,4 +1,5 @@
 import { outlookSignIn, getOutlookUserEmail } from "../logic/outlook-auth";
+import { gmailSignInPKCE, getGmailUserEmail } from "../logic/gmail-auth";
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // One-click unsubscribe POST - works for both Gmail and Outlook senders
@@ -51,6 +52,29 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                     outlookToken: tokens.accessToken,
                     outlookRefreshToken: tokens.refreshToken,
                     outlookEmail: email,
+                });
+
+                sendResponse({ success: true, email });
+            })
+            .catch((err) => {
+                sendResponse({ success: false, error: err.message });
+            });
+
+        return true;
+    }
+
+    // Gmail PKCE sign-in - only invoked on browsers without chrome.identity.getAuthToken (Firefox/Zen).
+    // Chrome still uses its native getAuthToken flow directly from the popup.
+    if (message.type === "GMAIL_SIGN_IN") {
+        gmailSignInPKCE()
+            .then(async (tokens) => {
+                const email = await getGmailUserEmail(tokens.accessToken);
+                if (!email) throw new Error("Could not get Gmail email");
+
+                await chrome.storage.local.set({
+                    gmailToken: tokens.accessToken,
+                    gmailRefreshToken: tokens.refreshToken,
+                    gmailEmail: email,
                 });
 
                 sendResponse({ success: true, email });
