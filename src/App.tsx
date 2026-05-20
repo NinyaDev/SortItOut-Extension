@@ -77,7 +77,10 @@ function App() {
         })
         .then((res) => {
             if (res.status === 401) {
-                chrome.identity.removeCachedAuthToken({ token: accessToken });
+                // removeCachedAuthToken only exists on Chrome; Firefox refreshes via stored refresh token instead
+                if (typeof chrome.identity.removeCachedAuthToken === "function") {
+                    chrome.identity.removeCachedAuthToken({ token: accessToken });
+                }
                 return null;
             }
             return res.json();
@@ -88,7 +91,7 @@ function App() {
     // On mount: check for cached tokens, restore last active provider, and restore results
     useEffect(() => {
         chrome.storage.local.get(
-            ["outlookToken", "outlookRefreshToken", "outlookEmail", "lastProvider", "gmailSenders", "outlookSenders", "lastResults"],
+            ["outlookToken", "outlookRefreshToken", "outlookEmail", "lastProvider", "gmailSenders", "outlookSenders", "lastResults", "gmailToken", "gmailRefreshToken", "gmailEmail"],
             (stored) => {
                 const lastProvider = stored.lastProvider as Provider | undefined;
                 let hasGmail = false;
@@ -106,47 +109,55 @@ function App() {
                     hasOutlook = true;
                 }
 
-                chrome.identity.getAuthToken({ interactive: false }, (result) => {
-                    const accessToken = typeof result === "string" ? result : result?.token;
-                    if (accessToken) {
-                        fetchGmailEmail(accessToken).then((userEmail) => {
-                            if (userEmail) {
-                                setGmailToken(accessToken);
-                                setGmailEmail(userEmail);
-                                hasGmail = true;
+                // Shared finalizers - mutate hasGmail / pick active provider / hydrate sender cache
+                const finalizeGmail = (accessToken: string, email: string) => {
+                    setGmailToken(accessToken);
+                    setGmailEmail(email);
+                    hasGmail = true;
 
-                                const providerToUse = lastProvider ?? (hasGmail ? "gmail" : hasOutlook ? "outlook" : null);
-                                if (providerToUse) {
-                                    setActiveProvider(providerToUse);
-                                    const cacheKey = providerToUse === "outlook" ? "outlookSenders" : "gmailSenders";
-                                    if (isValidSenderCache(stored[cacheKey])) {
-                                        setSenders(stored[cacheKey] as SenderInfo[]);
-                                        setHasScanned(true);
-                                    }
-                                }
-                            }
-                            setLoading(false);
-                        }).catch(() => {
-                            if (hasOutlook) {
-                                setActiveProvider("outlook");
-                                if (isValidSenderCache(stored.outlookSenders)) {
-                                    setSenders(stored.outlookSenders as SenderInfo[]);
-                                    setHasScanned(true);
-                                }
-                            }
-                            setLoading(false);
-                        });
-                    } else {
-                        if (hasOutlook) {
-                            setActiveProvider("outlook");
-                            if (isValidSenderCache(stored.outlookSenders)) {
-                                setSenders(stored.outlookSenders as SenderInfo[]);
-                                setHasScanned(true);
-                            }
+                    const providerToUse = lastProvider ?? (hasGmail ? "gmail" : hasOutlook ? "outlook" : null);
+                    if (providerToUse) {
+                        setActiveProvider(providerToUse);
+                        const cacheKey = providerToUse === "outlook" ? "outlookSenders" : "gmailSenders";
+                        if (isValidSenderCache(stored[cacheKey])) {
+                            setSenders(stored[cacheKey] as SenderInfo[]);
+                            setHasScanned(true);
                         }
-                        setLoading(false);
                     }
-                });
+                    setLoading(false);
+                };
+
+                const finalizeWithoutGmail = () => {
+                    if (hasOutlook) {
+                        setActiveProvider("outlook");
+                        if (isValidSenderCache(stored.outlookSenders)) {
+                            setSenders(stored.outlookSenders as SenderInfo[]);
+                            setHasScanned(true);
+                        }
+                    }
+                    setLoading(false);
+                };
+
+                if (typeof chrome.identity.getAuthToken === "function") {
+                    // Chrome path: check chrome.identity for a cached Google session
+                    chrome.identity.getAuthToken({ interactive: false }, (result) => {
+                        const accessToken = typeof result === "string" ? result : result?.token;
+                        if (accessToken) {
+                            fetchGmailEmail(accessToken).then((userEmail) => {
+                                if (userEmail) finalizeGmail(accessToken, userEmail);
+                                else finalizeWithoutGmail();
+                            }).catch(() => finalizeWithoutGmail());
+                        } else {
+                            finalizeWithoutGmail();
+                        }
+                    });
+                } else if (stored.gmailToken && stored.gmailEmail && stored.gmailRefreshToken) {
+                    // Firefox/Zen path: trust stored tokens. If the access token is expired,
+                    // the first 401 from any API call triggers a refresh via gmailFetch.
+                    finalizeGmail(stored.gmailToken as string, stored.gmailEmail as string);
+                } else {
+                    finalizeWithoutGmail();
+                }
             }
         );
     }, []);
@@ -179,32 +190,64 @@ function App() {
 
     const handleSignInGoogle = () => {
         setLoading(true);
-        chrome.identity.getAuthToken({ interactive: true }, (result) => {
-            const accessToken = typeof result === "string" ? result : result?.token;
 
-            if (chrome.runtime.lastError || !accessToken) {
-                console.error("Error obtaining token:", chrome.runtime.lastError);
-                setLoading(false);
-                return;
-            }
+        if (typeof chrome.identity.getAuthToken === "function") {
+            // Chrome path: native getAuthToken flow, unchanged from 1.0.1
+            chrome.identity.getAuthToken({ interactive: true }, (result) => {
+                const accessToken = typeof result === "string" ? result : result?.token;
 
-            fetchGmailEmail(accessToken)
-                .then((userEmail) => {
-                    if (userEmail) {
-                        setGmailToken(accessToken);
-                        setGmailEmail(userEmail);
-                        setActiveProvider("gmail");
-                        chrome.storage.local.set({ lastProvider: "gmail" });
-                        chrome.storage.local.get("gmailSenders", (data) => {
-                            if (isValidSenderCache(data.gmailSenders)) {
-                                setSenders(data.gmailSenders);
-                            }
-                        });
+                if (chrome.runtime.lastError || !accessToken) {
+                    console.error("Error obtaining token:", chrome.runtime.lastError);
+                    setLoading(false);
+                    return;
+                }
+
+                fetchGmailEmail(accessToken)
+                    .then((userEmail) => {
+                        if (userEmail) {
+                            setGmailToken(accessToken);
+                            setGmailEmail(userEmail);
+                            setActiveProvider("gmail");
+                            chrome.storage.local.set({ lastProvider: "gmail" });
+                            chrome.storage.local.get("gmailSenders", (data) => {
+                                if (isValidSenderCache(data.gmailSenders)) {
+                                    setSenders(data.gmailSenders);
+                                }
+                            });
+                        }
+                    })
+                    .catch((err) => console.error("Failed to fetch user info:", err))
+                    .finally(() => setLoading(false));
+            });
+        } else {
+            // Firefox/Zen path: PKCE flow runs in the service worker (same pattern as Outlook sign-in).
+            // The popup would close mid-auth if launchWebAuthFlow ran here directly.
+            setToast("Google sign-in opened...");
+            chrome.runtime.sendMessage({ type: "GMAIL_SIGN_IN" }, (response) => {
+                if (!response?.success) {
+                    if (response?.error) console.error("Gmail sign-in failed:", response.error);
+                    setLoading(false);
+                    return;
+                }
+
+                chrome.storage.local.get(["gmailToken"], (stored) => {
+                    if (!stored.gmailToken) {
+                        setLoading(false);
+                        return;
                     }
-                })
-                .catch((err) => console.error("Failed to fetch user info:", err))
-                .finally(() => setLoading(false));
-        });
+                    setGmailToken(stored.gmailToken as string);
+                    setGmailEmail(response.email);
+                    setActiveProvider("gmail");
+                    chrome.storage.local.set({ lastProvider: "gmail" });
+                    chrome.storage.local.get("gmailSenders", (data) => {
+                        if (isValidSenderCache(data.gmailSenders)) {
+                            setSenders(data.gmailSenders);
+                        }
+                    });
+                    setLoading(false);
+                });
+            });
+        }
     };
 
     const handleSignInOutlook = () => {
@@ -248,10 +291,15 @@ function App() {
 
     const handleLogout = () => {
         if (activeProvider === "gmail" && gmailToken) {
-            chrome.identity.removeCachedAuthToken({ token: gmailToken });
+            // Chrome: invalidate the cached Google session token
+            if (typeof chrome.identity.removeCachedAuthToken === "function") {
+                chrome.identity.removeCachedAuthToken({ token: gmailToken });
+            }
             setGmailToken(null);
             setGmailEmail(null);
-            chrome.storage.local.remove("gmailSenders");
+            // gmailToken/gmailRefreshToken/gmailEmail only exist on Firefox/Zen,
+            // but removing missing keys is a no-op so this is safe on both browsers
+            chrome.storage.local.remove(["gmailSenders", "gmailToken", "gmailRefreshToken", "gmailEmail"]);
         } else if (activeProvider === "outlook") {
             setOutlookToken(null);
             setOutlookEmail(null);
