@@ -17,7 +17,9 @@
     <img src="https://img.shields.io/badge/Install_from_Chrome_Web_Store-7c3aed?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Install from Chrome Web Store" height="40">
   </a>
   &nbsp;
-  <img src="https://img.shields.io/badge/Firefox_Add--ons-coming_soon-ff7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Firefox Add-ons coming soon" height="40">
+  <a href="https://addons.mozilla.org/addon/sortitout/">
+    <img src="https://img.shields.io/badge/Install_from_Firefox_Add--ons-ff7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Install from Firefox Add-ons" height="40">
+  </a>
 </p>
 
 ---
@@ -125,7 +127,7 @@ The `key` field in `public/manifest.json` makes the unpacked build compute the s
 3. Click **Load Temporary Add-on** and pick `dist/manifest.json`
 4. The SortItOut icon will appear in your toolbar
 
-Note: temporary add-ons are removed when you close the browser. For persistent local testing, sign the extension with your own AMO developer account or wait for the published AMO listing.
+Note: temporary add-ons are removed when you close the browser. For a persistent install, use the [published AMO listing](https://addons.mozilla.org/addon/sortitout/) or sign the extension with your own AMO developer account.
 
 ### 5. Wire up your own OAuth clients (optional)
 
