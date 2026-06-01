@@ -127,7 +127,7 @@ The `key` field in `public/manifest.json` makes the unpacked build compute the s
 3. Click **Load Temporary Add-on** and pick `dist/manifest.json`
 4. The SortItOut icon will appear in your toolbar
 
-Note: temporary add-ons are removed when you close the browser. For a persistent install, use the [published AMO listing](https://addons.mozilla.org/addon/sortitout/) or sign the extension with your own AMO developer account.
+Note: temporary add-ons are removed when you close the browser. For a persistent install, use the recent [published AMO listing](https://addons.mozilla.org/addon/sortitout/) or sign the extension with your own AMO developer account.
 
 ### 5. Wire up your own OAuth clients (optional)
 
